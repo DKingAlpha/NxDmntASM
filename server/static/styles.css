@@ -1,0 +1,17 @@
+.container {
+    height: 100%;
+    display: flex;
+}
+
+textarea {
+    width: 45%;
+    height: 80%; /* Set the height to match the parent container */
+    margin: 10px;
+    resize: none; /* Disable textarea resizing */
+    overflow: auto; /* Add scrollbars when necessary */
+}
+html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+  }

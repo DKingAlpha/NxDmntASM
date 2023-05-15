@@ -2,10 +2,12 @@
 #-*- coding:utf-8 -*-
 
 from .instructions import vm_inst_dism, vm_inst
+import logging
 
 class CheatParser:
-    def __init__(self) -> None:
+    def __init__(self, err_handler = None) -> None:
         self.entries = []
+        self.err_handler = err_handler if err_handler else (lambda *args,**kwargs : None)
     
     def parse(self, content: str, append: bool = False) -> bool:
         all_ok = True
@@ -26,7 +28,7 @@ class CheatParser:
                 elif line.startswith('{'):
                     # master code block
                     if not line.endswith('}'):
-                        raise SyntaxError(f"line #{line_number}, {line}: invalid master code declaration, missing }}")
+                        self.err_handler(f"line #{line_number}, {line}: invalid master code declaration, missing }}")
                     # finish previous entry
                     if cur_entry_name or cur_entry_block:
                         self.entries.append((cur_entry_name, cur_entry_block))
@@ -36,7 +38,7 @@ class CheatParser:
                 elif line.startswith('['):
                     # entry block
                     if not line.endswith(']'):
-                        raise SyntaxError(f"line #{line_number}, {line}: invalid entry declaration, missing ]")
+                        self.err_handler(f"line #{line_number}, {line}: invalid entry declaration, missing ]")
                     # finish previous entry
                     if cur_entry_name or cur_entry_block:
                         self.entries.append((cur_entry_name, cur_entry_block))
@@ -49,13 +51,15 @@ class CheatParser:
                         inst : vm_inst = vm_inst_dism(line)
                     except Exception as e:                
                         all_ok = False
-                        print(f"failed to dism Line.{line_number}, {line}: {e}")
+                        self.err_handler(f"failed to dism Line.{line_number}, {line}: {e}")
                     cur_entry_block.append(inst)
                 else:
-                    raise SyntaxError(f"Line #{line_number}, {line}: code does not belong to an entry.")
+                    self.err_handler(f"Line #{line_number}, {line}: code does not belong to an entry.")
             except Exception as e:
                 all_ok = False
-                print(f"failed to dism Line.{line_number}, {line}: {e}")
+                self.err_handler(f"failed to dism Line.{line_number}, {line}: {e}")
+        if cur_entry_name or cur_entry_block:
+            self.entries.append((cur_entry_name, cur_entry_block))
         return all_ok
     
     def dumps(self, indent = 0) -> str:

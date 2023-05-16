@@ -200,7 +200,6 @@ class vm_store_imm(vm_inst):
     + A: Immediate offset to use from memory region base.
     + V: Value to write.
     """
-    CODE_NAME = 'store'
     CODE_TYPE = '0'
 
     def __init__(self) -> None:
@@ -244,7 +243,7 @@ class vm_store_imm(vm_inst):
 
     def dism(self) -> str:
         p = self.prop
-        return f'{self.CODE_NAME} {p.T} [{p.M.name.lower()} + {p.A:#x} + r{p.R}], {int_to_dtype_hexstr(p.V, str(p.T), True)}'
+        return f'{p.T} [{p.M.name.lower()} + {p.A:#x} + r{p.R}] = {int_to_dtype_hexstr(p.V, str(p.T), True)}'
 
 
 class vm_if_off_COND_imm(vm_inst):
@@ -278,7 +277,6 @@ class vm_if_off_COND_imm(vm_inst):
     + 5: ==
     + 6: !=
     """
-    CODE_NAME = 'if'
     CODE_TYPE = '1'
 
     def __init__(self) -> None:
@@ -320,7 +318,7 @@ class vm_if_off_COND_imm(vm_inst):
     
     def dism(self) -> str:
         p = self.prop
-        return f'{self.CODE_NAME} {p.T} [{p.M.name.lower()} + {p.A:#x}] {p.C} {int_to_dtype_hexstr(p.V, str(p.T), True)}'
+        return f'if {p.T} [{p.M.name.lower()} + {p.A:#x}] {p.C} {int_to_dtype_hexstr(p.V, str(p.T), True)}'
 
 
 class vm_endif(vm_inst):
@@ -480,7 +478,6 @@ class vm_move_reg(vm_inst):
     + R: Register to use.
     + V: Value to load.
     """
-    CODE_NAME = 'set'
     CODE_TYPE = '4'
 
     def __init__(self) -> None:
@@ -515,7 +512,7 @@ class vm_move_reg(vm_inst):
         return super()._asm()
 
     def dism(self) -> str:
-        return f'{self.CODE_NAME} r{self.prop.R} = {self.prop.V}'
+        return f'r{self.prop.R} = {self.prop.V}'
     
 
 class vm_load(vm_inst):
@@ -544,7 +541,6 @@ class vm_load(vm_inst):
     + R: Register to load value into. (This register is also used as the base memory address).
     + A: Immediate offset to use from register R.
     """
-    CODE_NAME = 'load'
     CODE_TYPE = '5'
 
     def __init__(self) -> None:
@@ -589,9 +585,9 @@ class vm_load(vm_inst):
     def dism(self) -> str:
         p = self.prop
         if p.S:
-            return f'{self.CODE_NAME} {str(p.T)} r{p.R} = [r{p.R} + {p.A:#x}]'
+            return f'{str(p.T)} r{p.R} = [r{p.R} + {p.A:#x}]'
         else:
-            return f'{self.CODE_NAME} {str(p.T)} r{p.R} = [{p.M.name.lower()} + {p.A:#x}]'
+            return f'{str(p.T)} r{p.R} = [{p.M.name.lower()} + {p.A:#x}]'
 
 
 class vm_store_reg_imm(vm_inst):
@@ -618,7 +614,6 @@ class vm_store_reg_imm(vm_inst):
     + r: Register used as offset when o is 1.
     + V: Value to write to memory.
     """
-    CODE_NAME = 'store'
     CODE_TYPE = '6'
 
     def __init__(self) -> None:
@@ -665,7 +660,7 @@ class vm_store_reg_imm(vm_inst):
             addr_reg += '++'
         if p.o:
             addr_reg += f' + r{p.r}'
-        return f'{self.CODE_NAME} {p.T} [{addr_reg}] = {p.V:#x}'
+        return f'{p.T} [{addr_reg}] = {p.V:#x}'
 
 
 class vm_legacy_set_imm(vm_inst):
@@ -697,7 +692,6 @@ class vm_legacy_set_imm(vm_inst):
     + 3: Left Shift
     + 4: Right Shift
     """
-    CODE_NAME = 'set'
     CODE_TYPE = '7'
 
     def __init__(self) -> None:
@@ -735,7 +729,7 @@ class vm_legacy_set_imm(vm_inst):
 
     def dism(self) -> str:
         p = self.prop
-        return f'{self.CODE_NAME} {p.T} r{p.R} {p.C}= {p.V:#x}'
+        return f'{p.T} r{p.R} {p.C}= {p.V:#x}'
 
 
 class vm_if_key(vm_inst):
@@ -754,7 +748,6 @@ class vm_if_key(vm_inst):
 
     Note that for multiple button combinations, the bitmasks should be ORd together.
     """
-    CODE_NAME = 'if key'
     CODE_TYPE = '8'
 
     def __init__(self) -> None:
@@ -808,7 +801,7 @@ class vm_if_key(vm_inst):
 
     def dism(self) -> str:
         p = self.prop
-        return f'{self.CODE_NAME} {p.k.name}'
+        return f'if key {p.k.name}'
 
 
 class vm_set_reg_reg(vm_inst):
@@ -832,7 +825,6 @@ class vm_set_reg_reg(vm_inst):
     + S: Register to use as left-hand operand.
     + s: Register to use as right-hand operand.
     """
-    CODE_NAME = 'set'
     CODE_TYPE = '9????0'
 
     def __init__(self) -> None:
@@ -874,10 +866,10 @@ class vm_set_reg_reg(vm_inst):
     def dism(self) -> str:
         p = self.prop
         if p.C == InstArithmetic.MOVE:
-            return f'{self.CODE_NAME} {p.T} r{p.R} = r{p.S}'
+            return f'{p.T} r{p.R} = r{p.S}'
         elif p.C == InstArithmetic.LOGICAL_NOT:
-            return f'{self.CODE_NAME} {p.T} r{p.R} = !r{p.S}'
-        return f'{self.CODE_NAME} {p.T} r{p.R} = r{p.S} {p.C} r{p.s}'
+            return f'{p.T} r{p.R} = !r{p.S}'
+        return f'{p.T} r{p.R} = r{p.S} {p.C} r{p.s}'
 
 
 class vm_set_reg_imm(vm_inst):
@@ -898,7 +890,6 @@ class vm_set_reg_imm(vm_inst):
     + S: Register to use as left-hand operand.
     + V: Value to use as right-hand operand.
     """
-    CODE_NAME = 'set'
     CODE_TYPE = '9????1'
 
     def __init__(self) -> None:
@@ -943,10 +934,10 @@ class vm_set_reg_imm(vm_inst):
     def dism(self) -> str:
         p = self.prop
         if p.C == InstArithmetic.MOVE:
-            return f'{self.CODE_NAME} {p.T} r{p.R} = r{p.S}'
+            return f'{p.T} r{p.R} = r{p.S}'
         elif p.C == InstArithmetic.LOGICAL_NOT:
-            return f'{self.CODE_NAME} {p.T} r{p.R} = !r{p.S}'
-        return f'{self.CODE_NAME} {p.T} r{p.R} = r{p.S} {p.C} {int_to_dtype_hexstr(p.V, str(p.T), True)}'
+            return f'{p.T} r{p.R} = !r{p.S}'
+        return f'{p.T} r{p.R} = r{p.S} {p.C} {int_to_dtype_hexstr(p.V, str(p.T), True)}'
 
 
 class vm_store_reg(vm_inst):
@@ -983,7 +974,6 @@ class vm_store_reg(vm_inst):
     + 4: Memory Region + Relative Address (ignore address register)
     + 5: Memory Region + Relative Address + Base Register as offset
     """
-    CODE_NAME = 'store'
     CODE_TYPE = 'A'
 
     def __init__(self) -> None:
@@ -1053,7 +1043,7 @@ class vm_store_reg(vm_inst):
                 addr_expr += f' + {p.a:#x} + r{p.x}'
             else:
                 assert False, f'invalid offset type {p.O}'
-        return f'{self.CODE_NAME} {p.T} [{addr_expr}] = r{p.S}'
+        return f'{p.T} [{addr_expr}] = r{p.S}'
 
 
 class vm_if_reg_COND_off(vm_inst):
@@ -1107,7 +1097,6 @@ class vm_if_reg_COND_off(vm_inst):
     + 5: ==
     + 6: !=
     """
-    CODE_NAME = 'if'
     CODE_TYPE = 'C0???0'
 
     def __init__(self) -> None:
@@ -1147,7 +1136,7 @@ class vm_if_reg_COND_off(vm_inst):
     
     def dism(self) -> str:
         p = self.prop
-        return f'{self.CODE_NAME} {p.T} r{p.S} {p.c} [{p.M.name.lower()}+{p.a:#x}]'
+        return f'if {p.T} r{p.S} {p.c} [{p.M.name.lower()}+{p.a:#x}]'
 
 
 class vm_if_reg_COND_offreg(vm_inst):
@@ -1157,8 +1146,6 @@ class vm_if_reg_COND_offreg(vm_inst):
         where:
             dtype default = u64
     """
-    
-    CODE_NAME = 'if'
     CODE_TYPE = 'C0???1'
     
     def __init__(self) -> None:
@@ -1200,7 +1187,7 @@ class vm_if_reg_COND_offreg(vm_inst):
     
     def dism(self) -> str:
         p = self.prop
-        return f'{self.CODE_NAME} {p.T} r{p.S} {p.c} [{p.M.name.lower()}+r{p.r}]'
+        return f'if {p.T} r{p.S} {p.c} [{p.M.name.lower()}+r{p.r}]'
 
 
 class vm_if_reg_COND_reg_off(vm_inst):
@@ -1214,7 +1201,6 @@ class vm_if_reg_COND_reg_off(vm_inst):
 
     C0TcS2Ra aaaaaaaa
     """
-    CODE_NAME = 'if'
     CODE_TYPE = 'C0???2'
 
     def __init__(self) -> None:
@@ -1258,7 +1244,7 @@ class vm_if_reg_COND_reg_off(vm_inst):
     
     def dism(self) -> str:
         p = self.prop
-        return f'{self.CODE_NAME} {p.T} r{p.S} {p.c} [r{p.R}+{p.a:#x}]'
+        return f'if {p.T} r{p.S} {p.c} [r{p.R}+{p.a:#x}]'
 
 
 class vm_if_reg_COND_reg_reg(vm_inst):
@@ -1268,8 +1254,6 @@ class vm_if_reg_COND_reg_reg(vm_inst):
         where:
             dtype default = u64
     """
-    
-    CODE_NAME = 'if'
     CODE_TYPE = 'C0???3'
     
     def __init__(self) -> None:
@@ -1313,7 +1297,7 @@ class vm_if_reg_COND_reg_reg(vm_inst):
     
     def dism(self) -> str:
         p = self.prop
-        return f'{self.CODE_NAME} {p.T} r{p.S} {p.c} [r{p.R}+r{p.r}]'
+        return f'if {p.T} r{p.S} {p.c} [r{p.R}+r{p.r}]'
 
 
 class vm_if_reg_COND_imm(vm_inst):
@@ -1323,8 +1307,6 @@ class vm_if_reg_COND_imm(vm_inst):
         where:
             dtype default = u64
     """
-    
-    CODE_NAME = 'if'
     CODE_TYPE = 'C0???400'
     
     def __init__(self) -> None:
@@ -1364,7 +1346,7 @@ class vm_if_reg_COND_imm(vm_inst):
     
     def dism(self) -> str:
         p = self.prop
-        return f'{self.CODE_NAME} {p.T} r{p.S} {p.c} {p.V:#x}'
+        return f'if {p.T} r{p.S} {p.c} {p.V:#x}'
 
 
 class vm_if_reg_COND_reg(vm_inst):
@@ -1374,8 +1356,6 @@ class vm_if_reg_COND_reg(vm_inst):
         where:
             dtype default = u64
     """
-    
-    CODE_NAME = 'if'
     CODE_TYPE = 'C0???50'
     
     def __init__(self) -> None:
@@ -1415,7 +1395,7 @@ class vm_if_reg_COND_reg(vm_inst):
     
     def dism(self) -> str:
         p = self.prop
-        return f'{self.CODE_NAME} {p.T} r{p.S} {p.c} r{p.X}'
+        return f'if {p.T} r{p.S} {p.c} r{p.X}'
 
 
 class vm_save_restore(vm_inst):
@@ -1447,7 +1427,6 @@ class vm_save_restore(vm_inst):
     + 2: Clear saved value
     + 3: Clear register
     """
-    CODE_NAME = 'save_restore'
     CODE_TYPE = 'C1'
     
     def __init__(self) -> None:
@@ -1525,7 +1504,6 @@ class vm_save_restore_mask(vm_inst):
     + 2: Clear saved value
     + 3: Clear register
     """
-    CODE_NAME = 'save_restore_mask'
     CODE_TYPE = 'c2'
     
     def __init__(self) -> None:

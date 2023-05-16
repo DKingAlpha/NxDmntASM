@@ -18,7 +18,7 @@ def test_ins(inst: vm_inst):
     print(inst)
 
 def test_parser():
-    titles = Path(r'......\switch\EdiZon\cheats').rglob('cheats\\*.txt')
+    titles = Path(r'D:\Switch\SD卡备份\switch\EdiZon\cheats').rglob('cheats\\*.txt')
     for cheat_txt in titles:
         cheat_asm = cheat_txt.parent / (cheat_txt.stem + '.asm')
         parser = CheatParser()
@@ -77,6 +77,6 @@ def test_api():
 
 
 if __name__ == '__main__':
-    test_error()
-    #test_parser()
+    #test_error()
+    test_parser()
     #test_api()

@@ -21,38 +21,43 @@ Please leave a comment on issue page if you have any suggestions on syntax.
 Disassembly Output
 
 ```lua
-[FM]
-loop r14 to 9
-    store u16 [heap + 0x3513a5c0 + r7], 0x400
-    set u64 r7 += 0xf0
+[Max Status]
+u64 r15 = [main + 0x724070]
+u64 r15 += 0x40
+loop r14 to 7
+    u32 [r15] = 0x270f
+    u64 r15 += 0x4
 endloop r14
-
-[ZR/←→ Equip/Switch (AMS only)]
-load u64 r12 = [main + 0x4df878]
-set u64 r12 += 0x1c4
-set r1 = 6401
-set u64 r13 = r12
-load u64 r13 = [r13 + 0x0]
-if u16 r13 < 0x190a
-  if u16 r13 >= 0x1901
-    if key RIGHT
-        set u64 r13 += 0x1
-        store u16 [r12] = r13
-    endif
-  endif
 endif
-if u16 r13 > 0x1901
-  if u16 r13 <= 0x190a
-    if key LEFT
-      set u64 r13 -= 0x1
-      store u16 [r12] = r13
-    endif
-  endif
-endif
-if key ZR
-  store u16 [r12] = r1
+u64 r15 = [main + 0x724070]
+u64 r15 += 0x60
+loop r14 to 4
+u32 [r15] = 0x270f
+u64 r15 += 0x4
+endloop r14
 endif
 
+[RS ←/→ Switch Sub-Weapon (AMS only)]
+u64 r12 = [main + 0x1cc6f08]
+u64 r12 = [r12 + 0x2c8]
+u64 r12 = [r12 + 0x58]
+u64 r12 = [r12 + 0x48]
+u64 r12 = [r12 + 0x50]
+u64 r12 += 0x1877e
+u64 r13 = r12
+u64 r13 = [r13 + 0x0]
+if key RSTICK_RIGHT
+    if u8 r13 < 0x6
+        u32 r13 += 0x1
+        u8 [r12] = r13
+    endif
+endif
+if key RSTICK_LEFT
+    if u8 r13 > 0x1
+        u32 r13 -= 0x1
+        u8 [r12] = r13
+    endif
+endif
 ```
 
 ### Python API

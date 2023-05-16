@@ -7,6 +7,7 @@ import string
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 
+from .utils import *
 from .constants import *
 
 STRICT_MODE = False
@@ -114,7 +115,7 @@ class vm_inst(ABC):
     @staticmethod
     def _normalize_mc(raw_mc: str) -> str:
         mc = raw_mc.replace(' ', '')
-        if not set(mc.replace(' ', '')).issubset(string.hexdigits):
+        if not is_imm(mc.replace(' ', '')):
             return ''
         # dont enable this, it will break a lot of things
         # dword alignment, compatible with ams
@@ -153,15 +154,373 @@ def vm_inst_dism(mc_line: str) -> vm_inst:
                 ins: vm_inst  = vm_cls()
                 if ins.dism_mc_line_to_prop(mc_line):
                     return ins
-    raise NotImplementedError(f'invalid instruction: {mc_line}')
+    raise SyntaxError(f'invalid instruction: {mc_line}')
 
-def vm_inst_asm(asm_line: str) -> vm_inst:
-    raise NotImplementedError(f'invalid instruction: {asm_line}')
+def vm_inst_asm(raw_line: str) -> vm_inst:
+    # fast check for nested expression
+    if raw_line.count('[') > 1 or raw_line.count(']') > 1:
+        raise SyntaxError('nested expression is not supported')
+    if raw_line.count('(') > 1 or raw_line.count(')') > 1:
+        raise SyntaxError('( ) are not supported')
 
+    lower_line = raw_line.strip().lower()
+    parts = [i.strip() for i in lower_line.split(' ') if i.strip()]
+    dtype, asm_line = extract_dtype(parts)
+    if asm_line == 'nop':
+        return vm_nop().build()
+    elif parts[0] == 'if':
+        # if
+        if len(parts) <= 1:
+            raise SyntaxError('invalid if statement')
+        # if key
+        if parts[1] == 'key':
+            if len(parts) <= 2:
+                raise SyntaxError('invalid if key statement')
+            keys = ''.join(parts[2:]).replace(' ', '')
+            return vm_if_key().build(keys)
+        # if conditions
+        op1_cond_op2 = asm_line[2:].strip()
+        if asm_line.endswith('then'):
+            op1_cond_op2 = op1_cond_op2[:-4].strip()
+        match = re.match(r'^(.+)\s+([=><!]+)\s+(.+)$', op1_cond_op2)
+        if not match:
+            raise SyntaxError('invalid if statement')
+        op1 = match.group(1)
+        cond = match.group(2)
+        op2 = match.group(3)
+        if cond not in ['=', '!=', '>', '<', '>=', '<=']:
+            raise SyntaxError(f'illegal condition {cond} if statement')
+        cond = InstCondition(cond)
+        if op1.startswith('r'):
+            pass
+        elif op1[0] == '[' and op1[-1] == ']':
+            if not is_imm(op2):
+                raise SyntaxError(f'{op2} is not imm in if statement')
+            value = int(op2, 0)
+            elems = get_bracket_elems(op1)
+            if not (len(elems) == 2 and isinstance(elems[0], InstMemBase) and isinstance(elems[1], int)):
+                raise SyntaxError(f'illegal {op1} in if statement')
+            return vm_if_off_COND_imm().build(elems[1], cond, value, elems[0], dtype)
+        elif op2[0] == '[' and op2[-1] == ']':
+            rN = get_reg_num(op1)
+            if rN < 0:
+                raise SyntaxError(f'illegal {op1} in if statement')
+            elems = get_bracket_elems(op2)
+            base = None
+            offset = 0
+            regs = []
+            for elem in elems:
+                if isinstance(elem, InstMemBase):
+                    if base is not None:
+                        raise SyntaxError(f'duplicate base in {op2}')
+                    base = elem
+                elif isinstance(elem, int):
+                    offset = elem
+                elif isinstance(elem, tuple):
+                    if elem[1] == True:
+                        raise SyntaxError(f'r{elem[0]}++ is not supported in if statement')
+                    regs.append(elem[0])
+            if base is not None:
+                if len(regs) >= 2:
+                    raise SyntaxError(f'illegal {op2} in if statement')
+                if len(regs) == 0:
+                    return vm_if_reg_COND_off().build(rN, cond, offset, base, dtype)
+                else:
+                    if offset:
+                        raise SyntaxError(f'offset unsupported here')
+                    return vm_if_reg_COND_offreg().build(rN, cond, regs[0], base, dtype)
+            elif len(regs) == 1:
+                return vm_if_reg_COND_reg_off().build(rN, cond, regs[0], offset, dtype)
+            elif len(regs) == 2:
+                if offset:
+                    raise SyntaxError(f'offset unsupported here')
+                return vm_if_reg_COND_reg_reg().build(rN, cond, regs[0], regs[1], dtype)
+            else:
+                raise SyntaxError(f'illegal {op2} in if statement')
+        elif op1[0] == 'r':
+            if not is_imm(op2):
+                raise SyntaxError(f'{op2} is not imm in if statement')
+            value = int(op2, 0)
+            rN = get_reg_num(op1)
+            if rN < 0:
+                raise SyntaxError(f'illegal {op1} in if statement')
+            return vm_if_reg_COND_imm().build(rN, cond, value, dtype)
+        elif op1[0] == 'r' and op2[0] == 'r':
+            rN = get_reg_num(op1)
+            rM = get_reg_num(op2)
+            if rN < 0:
+                raise SyntaxError(f'illegal {op1} in if statement')
+            if rM < 0:
+                raise SyntaxError(f'illegal {op2} in if statement')
+            return vm_if_reg_COND_reg().build(rN, cond, rM, dtype)
+        else:
+            raise SyntaxError('invalid if statement')
+    elif asm_line == 'endif':
+        return vm_endif().build()
+    elif asm_line == 'pause':
+        return vm_pause().build()
+    elif asm_line == 'resume':
+        return vm_resume().build()
+    elif parts[0] == 'loop':
+        if len(parts) != 4:
+            raise SyntaxError('invalid loop statement')
+        match = re.match(r'^loop\s+r(\d+)\s+to\s(\d+)$', asm_line)
+        if not match:
+            raise SyntaxError('invalid loop statement')
+        reg = int(match.group(1))
+        count = int(match.group(2))
+        return vm_loop().build(reg, count)
+    elif asm_line == 'endloop':
+        if len(parts) != 2 or parts[1]:
+            raise SyntaxError('invalid endloop statement')
+        match = re.match(r'^endloop\s+r(\d+)$', asm_line)
+        if not match:
+            raise SyntaxError('invalid endloop statement')
+        reg = int(match.group(1))
+        return vm_endloop().build(reg)
+    elif parts[0] == 'log':
+        match = re.match(r'^log\s+(\d+)\s+(.*)$', asm_line)
+        if not match:
+            raise SyntaxError('invalid log statement')
+        logid = int(match.group(1))
+        elems = get_bracket_elems(match.group(2))
+        # parts are list[int|InstMemBase|tuple[int,bool]]
+        base = None
+        offset = 0
+        regs = []
+        for elem in elems:
+            if isinstance(elem, int):
+                offset += elem
+            elif isinstance(elem, tuple):
+                if elem[1] == True:
+                    raise SyntaxError(f'r{elem[0]}++ is not supported in log statement')
+                regs.append(elem[0])
+            elif isinstance(elem, InstMemBase):
+                if base is not None:
+                    raise SyntaxError('duplicate base in log statement')
+                base = elem
+        if base is not None:
+            if regs:
+                if len(regs) >= 2:
+                    raise SyntaxError(f'too many regs {regs} in mem-based log statement.')
+                if offset:
+                    raise SyntaxError(f'offset unsupported here')
+                return vm_log_offreg().build(logid, regs[0], base, dtype)
+            else:
+                return vm_log_off().build(logid, offset, base, dtype)
+        elif regs:
+            if len(regs) == 1:
+                if offset == 0:    # rM
+                    return vm_log_reg().build(logid, regs[0], dtype)
+                else:              # rM + offset
+                    return vm_log_reg_off().build(logid, regs[0], offset, dtype)
+            elif len(regs) == 2:   # rM + rN
+                if offset:
+                    raise SyntaxError(f'offset unsupported here')
+                return vm_log_reg_offreg().build(logid, regs[0], regs[1], dtype)
+            else:
+                raise SyntaxError(f'too many regs {regs} in reg-based log statement.')
+        else:
+            raise SyntaxError('invalid log statement')
+    elif 'static' in asm_line:
+        # rN = static[i]  # when i < 0x80
+        # static[i] = rN  # when i >= 0x80
+        if '=' not in asm_line:
+            raise SyntaxError('invalid static statement')
+        op1, op2 = asm_line.split('=')
+        if op1.startswith('r') and op2.startswith('static'):
+            return vm_rw_static_reg().build(int(op1[1:]), int(op2[6:].strip('[]'), 0))
+        elif op1.startswith('static') and op2.startswith('r'):
+            return vm_rw_static_reg().build(int(op2[1:]), int(op1[6:].strip('[]'), 0))
+        else:
+            raise SyntaxError('invalid static statement')
+    elif 'save' in asm_line:
+        # save[i] = rN
+        # rN = save[i]
+        # save[i] = 0
+        # save rA, rB, ..., rN
+        # save[i,j,...k] = 0
+        if '=' in asm_line:
+            op1, op2 = asm_line.split('=')
+            if op1.startswith('save') and op2.startswith('r'):
+                save_indices = op1[4:].strip('[]')
+                if ',' in save_indices:
+                    return vm_save_restore_mask().build(InstSaveRestoreRegOp.SAVE, save_indices)
+                else:
+                    return vm_save_restore().build(int(save_indices, 0), InstSaveRestoreRegOp.SAVE, int(op2[1:]))
+            elif op1.startswith('r') and op2.startswith('save'):
+                return vm_save_restore().build(int(op1[1:]), InstSaveRestoreRegOp.RESTORE, int(op2[4:].strip('[]'), 0))
+            elif op1.startswith('save') and op2.strip() == '0':
+                destreg = int(op1[4:].strip('[]'), 0)
+                return vm_save_restore().build(destreg, InstSaveRestoreRegOp.CLEAR, 0)
+        else:
+            if parts[0] != 'save':
+                raise SyntaxError('invalid save statement')
+            return vm_save_restore_mask().build(InstSaveRestoreRegOp.SAVE, asm_line.split(' ')[1])
+    elif 'restore' in asm_line:
+        # restore rA, rB, ..., rN
+        return vm_save_restore_mask().build(InstSaveRestoreRegOp.RESTORE, asm_line.split(' ')[1])
+    elif re.match(r'r[r\d,]+=0', asm_line.replace(' ', '')):
+        # rN = 0
+        # r1,r2,... = 0
+        if '=' not in asm_line:
+            raise SyntaxError('invalid statement')
+        regs, _ = asm_line.replace(' ', '').replace('=')
+        if ',' in asm_line:
+            return vm_save_restore_mask().build(InstSaveRestoreRegOp.REG_ZERO, regs)
+        else:
+            return vm_save_restore().build(int(parts[0].strip()[1:]), InstSaveRestoreRegOp.REG_ZERO, 0)
+    elif '=' in asm_line:
+        # this must be an r/w instruction.
+        # we have dealt with other instructions with '=' above
+        return _vm_inst_asm_rw(asm_line)
+    else:
+        raise SyntaxError(f'invalid statement')
+
+
+def _vm_inst_asm_rw(dtype: str, asm_line: str) -> vm_inst:
+    # reg<->reg
+    # {dtype} rD = rS
+    # {dtype} rD = !rS
+    match = re.match(r'^r(\d+)\s*=\s*(~?)r(\d+)$', asm_line)
+    if match:
+        if match.group(2) == '~':
+            return vm_set_reg_reg().build(int(match.group(1)), int(match.group(3)), InstArithmetic.LOGICAL_NOT, 0, dtype)
+        else:
+            return vm_set_reg_reg().build(int(match.group(1)), int(match.group(3)), InstArithmetic.MOVE, 0, dtype)
+
+    # {dtype} rD = rS OP value
+    # {dtype} rD = rS OP rs
+    match = re.match(r'^r(\d+)\s*=\s*r(\d+)\s*([+-*<>&|^]{1,2})\s*(.+)$', asm_line)
+    if match:
+        op = match.group(3)
+        if op not in ['+', '-', '*', '<<', '>>', '&', '|', '^']:
+            raise SyntaxError(f'unknown arithmetic operator {op}')
+        rD = int(match.group(1))
+        op = InstArithmetic(op)
+        rS = int(match.group(2))
+        if match.group(4).startswith('r'):
+            rs = get_reg_num(match.group(4))
+            if rs < 0:
+                raise SyntaxError(f'invalid register {op1}')
+            return vm_set_reg_reg().build(rD, rS, op, rs, dtype)
+        elif is_imm(match.group(4)):
+            return vm_set_reg_imm().build(rD, rS, op, int(match.group(4), 0), dtype)
+        else:
+            raise SyntaxError(f'invalid operand {match.group(4)}')
+
+    # reg update (legacy, use next instruction instead)
+    # {dtype} rN OP= value
+    match = re.match(r'^r(\d+)\s*([+-*<>]{1,2})=\s*(.+)$', asm_line)
+    if match:
+        op = match.group(2)
+        if op not in ['+', '-', '*', '<<', '>>']:
+            raise SyntaxError(f'unknown arithmetic operator {op}')
+        rN = int(match.group(1))
+        op = InstArithmetic(op)
+        if is_imm(match.group(3)):
+            return vm_legacy_set_imm().build(rN, op, int(match.group(3), 0), dtype)
+        else:
+            raise SyntaxError(f'invalid imm {match.group(3)}')
+
+    # reg<-imm
+    # rN = value  # always 64-bit
+    match = re.match(r'^r(\d+)\s*=\s*([^r]+)$', asm_line)
+    if match:
+        if is_imm(match.group(2)):
+            return vm_move_reg().build(int(match.group(1)), int(match.group(2), 0))
+        else:
+            raise SyntaxError(f'invalid imm {match.group(2)}')
+
+    ### helper
+    def normalize_base_offset_regs_from_bracket(s: str) -> list[InstMemBase|None, int, list[tuple[int, bool]]]:
+        elems = get_bracket_elems(s)
+        base = None
+        offset = 0
+        regs = []
+        for elem in elems:
+            if isinstance(elem, InstMemBase):
+                if base is not None:
+                    raise SyntaxError(f'duplicate base in {s}')
+                base = elem
+            elif isinstance(elem, int):
+                offset = elem
+            elif isinstance(elem, tuple):
+                regs.append(elem)
+        return (base, offset, regs)
+    ### the worst part comes
+    op1, op2 = asm_line.replace(' ', '').split('=')
+    if op1[0] == '[' and op1[-1] == ']':
+        # {dtype} [base + rN {+offset}] = value
+        # {dtype} [rM{++} {+rN}] = value
+        # {dtype} [rM{++} {+offset}] = rS
+        # {dtype} [rM{++} {+rN}] = rS
+        # {dtype} [base + {+offset {+rM{++}}}] = rS
+        base, offset, regs = normalize_base_offset_regs_from_bracket(op1)
+        if is_imm(op2):
+            value = int(op2, 0)
+            if base is not None:
+                if len(regs) == 0 or len(regs) > 2:
+                    raise SyntaxError(f'illegal registers in {op1}')
+                if regs[0][1] == True:
+                    raise SyntaxError(f'r{regs[0]}++ is not supported here')
+                return vm_store_imm().build(offset, value, regs[0][0], base, dtype)
+            else:
+                if offset:
+                    raise SyntaxError(f'offset is not supported here')
+                if len(regs) == 0 or len(regs) > 2:
+                    raise SyntaxError(f'illegal registers in {op1}')
+                if len(regs) > 1 and regs[1][1] == True:
+                    raise SyntaxError(f'r{regs[1]}++ is not supported here')
+                if len(regs) == 1:
+                    return vm_store_reg_imm().build(regs[0][0], value, regs[0][1], False, 0, dtype)
+                else:
+                    return vm_store_reg_imm().build(regs[0][0], value, regs[0][1], True, regs[1][0], dtype)
+        else:
+            rS = int(op2[1:])
+            if base is not None:
+                # [base + {+offset {+rM{++}}}] = rS
+                if len(regs) > 1:
+                    raise SyntaxError(f'illegal registers in {op1}')
+                if len(regs) == 1:
+                    if offset == 0:
+                        return vm_store_reg().build(InstOffsetType.MEMBASE_REG, regs[0][0], regs[0][1], 0, base, rS, dtype)
+                    else:
+                        return vm_store_reg().build(InstOffsetType.MEMBASE_IMM_OFFREG, regs[0][0], regs[0][1], offset, base, rS, dtype)
+                else:
+                    return vm_store_reg().build(InstOffsetType.MEMBASE_IMM, 0, False, offset, base, rS, dtype)
+            else:
+                # [rM{++} {+offset {+rN}}] = rS
+                if len(regs) == 0 or len(regs) > 2:
+                    raise SyntaxError(f'illegal registers in {op1}')
+                if len(regs) > 1 and regs[1][1] == True:
+                    raise SyntaxError(f'r{regs[1]}++ is not supported here')
+                if offset and len(regs) == 2:
+                    raise SyntaxError(f'offset {offset} and offreg r{regs[1][0]} can not exist at the same time')
+                if len(regs) == 2:
+                    return vm_store_reg().build(InstOffsetType.OFF_REG, regs[0][0], regs[0][1], regs[1][0], rS, dtype)
+                else:
+                    return vm_store_reg().build(InstOffsetType.OFF_IMM, regs[0][0], regs[0][1], offset, rS, dtype)
+
+    elif op2[0] == '[' and op2[-1] == ']':
+        # {dtype} rN = [base {+offset}]
+        # {dtype} rN = [rN {+ offset}]  # Note: {dtype} rA = [rB + offset] is unsupported
+        rN = get_reg_num(op1)
+        if rN < 0:
+            raise SyntaxError(f'invalid register {op1}')
+        base, offset, regs = normalize_base_offset_regs_from_bracket(op2)
+        if len(regs):
+            raise SyntaxError(f'registers not allowed in {op2}')
+        if base is not None:
+            return vm_load().build(rN, offset, False, base, dtype)
+        else:
+            return vm_load().build(rN, offset, True, 0, dtype)
+    else:
+        raise SyntaxError(f'invalid statement')
 
 class vm_nop(vm_inst):
     """
-    peopel write 00000000 .... in credit section
+    well, people write 00000000 .... in credit section
     """
     CODE_NAME = 'nop'
     CODE_TYPE = '000000000'
@@ -179,14 +538,12 @@ class vm_nop(vm_inst):
 class vm_store_imm(vm_inst):
     """
     ### Syntax
-    store {p.T} [base+offset{+rN}] = value
+    {dtype} [base + rN {+offset}] = value
         where:
-            base = main/heap/alias/aslr
-            offset <= 0xFF,FFFFFFFF
-            dtype = u8/u16/u32/u64/i8.../i64. default = u32
-            offreg = 0 .. 16. default = 0
+            offset <= 0xFFFFFFFFFF
+            dtype: default = u32
         example:
-            StOre [maIn + 0x100 + reg2] = i8 -18
+            i8 [maIn + r2 + 0x100] = -18
 
     ### Code Type 0x0: Store Static Value to Memory
     Code type 0x0 allows writing a static value to a memory address.
@@ -224,12 +581,14 @@ class vm_store_imm(vm_inst):
             width = InstWidth.W,
         ) -> vm_store_imm:
         # verify args
-        if (offreg >= 16):
+        if offreg >= 16 or offreg < 0:
             raise ValueError(f'reg {offreg} out of range')
         if (offset >> 10 * 4) != 0:
             raise ValueError(f'offset {offset} larger than 40 bits')
         if value >= (1 << (int(InstWidth(width))*8)):
             raise ValueError(f'value {value} overflows width {width}')
+        if not width:
+            width = InstWidth.W
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
@@ -249,7 +608,7 @@ class vm_store_imm(vm_inst):
 class vm_if_off_COND_imm(vm_inst):
     """
     ### Syntax
-    if {dtype} [base+offset] COND value {then}
+    if {dtype} [base {+offset}] COND value {then}
         where:
             COND = >, >=, <, <=, ==, !=
             THEN is optional keyword
@@ -305,6 +664,8 @@ class vm_if_off_COND_imm(vm_inst):
             raise ValueError(f'offset {offset} larger than 40 bits')
         if value >= (1 << (int(InstWidth(width))*8)):
             raise ValueError(f'value {value} overflows width {width}')
+        if not width:
+            width = InstWidth.W
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
@@ -447,7 +808,7 @@ class vm_endloop(vm_inst):
             reg: int
         ) -> vm_endloop:
         # verify args
-        if (reg >= 16):
+        if reg >= 16 or reg < 0:
             raise ValueError(f'reg {reg} out of range')
         # bind args
         local_vars = locals()
@@ -467,7 +828,7 @@ class vm_endloop(vm_inst):
 class vm_move_reg(vm_inst):
     """
     ### Syntax
-    set rN = value
+    rN = value  # always 64-bit
 
     ### Code Type 0x4: Load Register with Static Value
     Code type 0x4 allows setting a register to a constant value.
@@ -518,10 +879,10 @@ class vm_move_reg(vm_inst):
 class vm_load(vm_inst):
     """
     ### Syntax
-    load {p.T} rN = [base + offset]
-    load {p.T} rN = [rN + offset]
+    {dtype} rN = [base {+offset}]
+    {dtype} rN = [rN {+offset}]
 
-    Note: load {p.T} rA = [rB + offset] is unsupported
+    Note: {dtype} rA = [rB + offset] is unsupported
 
     ### Code Type 0x5: Load Register with Memory Value
     Code type 0x5 allows loading a value from memory into a register, either using a fixed address or by dereferencing the destination register.
@@ -569,6 +930,8 @@ class vm_load(vm_inst):
             raise ValueError(f'reg {reg} out of range')
         if (offset >> self.format.count('A') * 4) != 0:
             raise ValueError(f'offset {offset} overflow')
+        if not width:
+            width = InstWidth.W
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
@@ -593,13 +956,13 @@ class vm_load(vm_inst):
 class vm_store_reg_imm(vm_inst):
     """
     ### Syntax
-    store {p.T} [rN{++} {+ rN}] = value
+    {dtype} [rM{++} {+rN}] = value
         where:
-            rN++ means rN+=width after operation
+            rM++ means rM += width after operation
         example:
-            store i32 [r0++ + r1] = 0x12345678
-            store i32 [r0 + r1] = 0x12345678
-            store i32 [r0++] = 0x12345678
+            i32 [r0++ + r1] = 0x12345678
+            i32 [r0 + r1] = 0x12345678
+            i32 [r0++] = 0x12345678
             
     ### Code Type 0x6: Store Static Value to Register Memory Address
     Code type 0x6 allows writing a fixed value to a memory address specified by a register.
@@ -640,8 +1003,10 @@ class vm_store_reg_imm(vm_inst):
             width = InstWidth.W,
         ) -> vm_store_reg_imm:
         # verify args
-        if (offreg >= 16):
+        if offreg >= 16 or offreg < 0:
             raise ValueError(f'reg {offreg} out of range')
+        if not width:
+            width = InstWidth.W
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
@@ -666,11 +1031,11 @@ class vm_store_reg_imm(vm_inst):
 class vm_legacy_set_imm(vm_inst):
     """
     ### Syntax
-    set {p.T} rN OP= value
+    {dtype} rN OP= value
         where:
             OP is one of +, -, *, <<, >>
         example:
-            set r0 += 0x12345678
+            r0 += 0x12345678
     
     ### Code Type 0x7: Legacy Arithmetic
     Code type 0x7 allows performing arithmetic on registers.
@@ -713,6 +1078,10 @@ class vm_legacy_set_imm(vm_inst):
             value: int,
             width = InstWidth.W,
         ) -> vm_store_reg_imm:
+        if reg >= 16 or reg < 0:
+            raise ValueError(f'reg out of range')
+        if not width:
+            width = InstWidth.W
         # bind args
         if isinstance(op, str) and op != '=' and op.endswith('='):
             op = InstArithmetic(op[:-1])
@@ -807,9 +1176,9 @@ class vm_if_key(vm_inst):
 class vm_set_reg_reg(vm_inst):
     """
     ### Syntax
-    set {p.T} rD = rS OP rT
-    set {p.T} rD = rS
-    set {p.T} rD = !rS
+    {dtype} rD = rS OP rs
+    {dtype} rD = rS
+    {dtype} rD = ~rS
         where:
             OP is one of +, -, *, <<, >> & | ^
 
@@ -836,23 +1205,27 @@ class vm_set_reg_reg(vm_inst):
             T = ('width', InstWidth, int),
             C = ('op', InstArithmetic, int),
             R = ('dest', int, int),
-            S = ('src1', int, int),
-            s = ('src2', int, int),
+            S = ('op1', int, int),
+            s = ('op2', int, int),
         )
         self._load_format()
 
     def build(self,
             dest: int,
-            src1: int,
+            op1: int,
             op: InstArithmetic,
-            src2: int,
+            op2: int,
             width = InstWidth.W,
         ) -> vm_store_reg_imm:
+        if dest >= 16 or dest < 0 or op1 >= 16 or op1 < 0 or op2 >= 16 or op2 < 0:
+            raise ValueError(f'reg out of range')
+        if not width:
+            width = InstWidth.W
         # bind args
         if isinstance(op, str) and op != '=' and op.endswith('='):
             op = InstArithmetic(op[:-1])
         local_vars = locals()
-        for sym in ('dest', 'src1', 'src2'):
+        for sym in ('dest', 'op1', 'op2'):
             assert local_vars[sym] < 16, f'invalid register {sym} {local_vars[sym]}'
         self.prop = _Properties({sym:
             self.binding[sym][1](   # run decoder on input value
@@ -875,9 +1248,9 @@ class vm_set_reg_reg(vm_inst):
 class vm_set_reg_imm(vm_inst):
     """
     ### Syntax
-    set {p.T} rD = rS OP value
-    set {p.T} rD = rS
-    set {p.T} rD = !rS
+    {dtype} rD = rS OP value
+    {dtype} rD = rS
+    {dtype} rD = !rS
         where:
             OP is one of +, -, *, <<, >> & | ^
 
@@ -913,6 +1286,11 @@ class vm_set_reg_imm(vm_inst):
             value: int,
             width = InstWidth.W,
         ) -> vm_set_reg_imm:
+        # verify args
+        if dest >= 16 or dest < 0 or src >= 16 or src < 0:
+            raise ValueError(f'reg out of range')
+        if not width:
+            width = InstWidth.W
         # bind args
         if isinstance(op, str) and op != '=' and op.endswith('='):
             op = InstArithmetic(op[:-1])
@@ -943,13 +1321,14 @@ class vm_set_reg_imm(vm_inst):
 class vm_store_reg(vm_inst):
     """
     ### Syntax
-    store {p.T} [rM{++} {+offset {+rN}}] = rS
-    store {p.T} [BASE + {+offset {+rM{++}}}] = rS
+    {dtype} [rM{++} {+offset}] = rS
+    {dtype} [rM{++} {+rN}] = rS
+    {dtype} [BASE + {+offset {+rM{++}}}] = rS
         where:
             rM ++ means rM +=width after operation
         example:
-            store u32 [r2++ ]
-            store u32 [r2++ + 2 + r3] = r4
+            u32 [r2++ ] = r5
+            u32 [r2++ + 2 + r3] = r4
 
 
     ### Code Type 0xA: Store Register to Memory Address
@@ -1006,6 +1385,8 @@ class vm_store_reg(vm_inst):
             raise ValueError(f'reg out of range')
         if (offset >> (self.format.count('a')) * 4) != 0:
             raise ValueError(f'offset {offset} overflow')
+        if not width:
+            width = InstWidth.W
         # bind args
         if not isinstance(offreg_or_membase, int):
             # make it works for string 'main'
@@ -1049,7 +1430,7 @@ class vm_store_reg(vm_inst):
 class vm_if_reg_COND_off(vm_inst):
     """
     ### Syntax
-    if {dtype} rN COND [base+offset] {then}
+    if {dtype} rN COND [base {+offset}] {then}
         where:
             COND = >, >=, <, <=, ==, !=
             THEN is optional keyword
@@ -1123,6 +1504,8 @@ class vm_if_reg_COND_off(vm_inst):
         # verify args
         if (offset >> self.format.count('a') * 4) != 0:
             raise ValueError(f'offset {offset} larger than 40 bits')
+        if not width:
+            width = InstWidth.X
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
@@ -1142,7 +1525,7 @@ class vm_if_reg_COND_off(vm_inst):
 class vm_if_reg_COND_offreg(vm_inst):
     """
     ### Syntax
-    if {dtype} rN COND [base+rM] {then}
+    if {dtype} rN COND [base + rM] {then}
         where:
             dtype default = u64
     """
@@ -1174,6 +1557,8 @@ class vm_if_reg_COND_offreg(vm_inst):
             raise ValueError(f'reg {reg} out of range')
         if offreg >= 16:
             raise ValueError(f'reg {offreg} out of range')
+        if not width:
+            width = InstWidth.X
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
@@ -1193,7 +1578,7 @@ class vm_if_reg_COND_offreg(vm_inst):
 class vm_if_reg_COND_reg_off(vm_inst):
     """
     ### Syntax
-    if {dtype} rN COND [rM+offset] {then}
+    if {dtype} rN COND [rM {+offset}] {then}
         where:
             dtype default = u64
             COND = >, >=, <, <=, ==, !=
@@ -1231,6 +1616,8 @@ class vm_if_reg_COND_reg_off(vm_inst):
             raise ValueError(f'reg {basereg} out of range')
         if (offset >> self.format.count('a') * 4) != 0:
             raise ValueError(f'offset {offset} larger than 40 bits')
+        if not width:
+            width = InstWidth.X
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
@@ -1250,7 +1637,7 @@ class vm_if_reg_COND_reg_off(vm_inst):
 class vm_if_reg_COND_reg_reg(vm_inst):
     """
     ### Syntax
-    if {dtype} rN COND [rBase+rOffset] {then}
+    if {dtype} rN COND [rBase + rOffset] {then}
         where:
             dtype default = u64
     """
@@ -1284,6 +1671,8 @@ class vm_if_reg_COND_reg_reg(vm_inst):
             raise ValueError(f'reg {basereg} out of range')
         if offreg >= 16:
             raise ValueError(f'reg {offreg} out of range')
+        if not width:
+            width = InstWidth.X
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
@@ -1333,6 +1722,8 @@ class vm_if_reg_COND_imm(vm_inst):
             raise ValueError(f'reg {reg} out of range')
         if value >= (1 << (int(InstWidth(width))*8)):
             raise ValueError(f'value {value} overflows width {width}')
+        if not width:
+            width = InstWidth.X
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
@@ -1382,6 +1773,8 @@ class vm_if_reg_COND_reg(vm_inst):
             raise ValueError(f'reg {reg} out of range')
         if reg_other >= 16:
             raise ValueError(f'reg {reg_other} out of range')
+        if not width:
+            width = InstWidth.X
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
@@ -1525,15 +1918,14 @@ class vm_save_restore_mask(vm_inst):
         mask = 0
         if isinstance(indicies, str):
             for index in indicies.split(','):
-                index = index.strip()
-                assert index.startswith('r')
+                index = index.strip().lstrip('r')
                 assert index[1:].isdigit()
                 index = int(index[1:])
-                assert index < 16
+                assert 0 <= index < 16
                 mask |= 1 << index
         elif isinstance(indicies, list):
             for index in indicies:
-                assert index < 16
+                assert 0 <= index < 16
                 mask |= 1 << index
         # bind args
         local_vars = locals()
@@ -1563,10 +1955,8 @@ class vm_save_restore_mask(vm_inst):
 class vm_rw_static_reg(vm_inst):
     """
     ### Syntax
-    rN = static[i]
-    static[i] = rN
-        where:
-            i < 0x80
+    rN = static[i]  # when i < 0x80
+    static[i] = rN  # when i >= 0x80
 
     ### Code Type 0xC3: Read or Write Static Register
     Code type 0xC3 reads or writes a static register with a given register.
@@ -1597,10 +1987,10 @@ class vm_rw_static_reg(vm_inst):
               static_reg: int,
         ) -> vm_rw_static_reg:
         # verify args
-        if reg >= 16:
-            assert f'reg {reg} out of range'
-        if static_reg > 0xFF:
-            assert f'static_reg {static_reg} out of range'
+        if reg >= 16 or reg < 0:
+            raise ValueError(f'reg {reg} out of range')
+        if static_reg > 0xFF or static_reg < 0:
+            raise ValueError(f'static_reg {static_reg} out of range')
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
@@ -1669,9 +2059,9 @@ class vm_resume(vm_inst):
 class _vm_log(vm_inst):
     """
     ### Syntax
-    log ID {dtype} [base + off]
+    log ID {dtype} [base {+offset}]
     log ID {dtype} [base + rN]
-    log ID {dtype} [rM + offset]
+    log ID {dtype} [rM {+offset}]
     log ID {dtype} [rM + rN]
     log ID {dtype} [rM]
         where:
@@ -1738,6 +2128,8 @@ class _vm_log(vm_inst):
             assert mem_or_reg < 16, f'reg {mem_or_reg} out of range'
         else:
             assert False, f'unknown log type {type}'
+        if not width:
+            width = InstWidth.X
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:

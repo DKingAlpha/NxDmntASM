@@ -3,6 +3,7 @@
 
 from enum import IntEnum, IntFlag
 import string
+from .utils import is_imm, get_reg_num
 
 class InstEnum(IntEnum):
     @classmethod
@@ -22,10 +23,29 @@ class InstEnum(IntEnum):
             if isinstance(value, int):
                 if member.name.lower() == str(value).lower():
                     return member
-            if isinstance(value, str) and set(value.lstrip('0xX')).issubset(string.hexdigits):
+            if isinstance(value, str) and is_imm(value):
                 if member.value == int(value ,0):
                     return member
         return None
+
+class InstRegister(InstEnum):
+    r0 = 0
+    r1 = 1
+    r2 = 2
+    r3 = 3
+    r4 = 4
+    r5 = 5
+    r6 = 6
+    r7 = 7
+    r8 = 8
+    r9 = 9
+    r10 = 10
+    r11 = 11
+    r12 = 12
+    r13 = 13
+    r14 = 14
+    r15 = 15
+
 
 class InstWidth(InstEnum):
     B = 1
@@ -213,52 +233,6 @@ class InstSaveRestoreRegOp(InstEnum):
     CLEAR = 2
     REG_ZERO = 2
 
-def int_to_dtype_hexstr(num: int, dtype: str, short_hex: bool = False, truncate: bool = False) -> str:
-    dtype = dtype.strip()
-    assert dtype[0] in ('i', 'u')
-    bit_width = int(dtype[1:])
-    assert bit_width in (8, 16, 32, 64)
-    if truncate:
-        if dtype[0] == 'i':
-            min_signed_value = -(1 << (bit_width - 1))
-            max_signed_value = (1 << (bit_width - 1)) - 1
-            if not (min_signed_value <= num <= max_signed_value):
-                orig_num = num
-                num = num & ((1 << bit_width) - 1)
-                raise OverflowError(f'Number {orig_num:#x} does not fit in {dtype}')
-        else:
-            max_unsigned_value = (1 << (bit_width)) - 1
-            if not (0 <= num <= max_unsigned_value):
-                orig_num = num
-                num = num & ((1 << bit_width) - 1)
-                raise OverflowError(f'Number {orig_num:#x} does not fit in {dtype}')
-    dtype_mask = (1 << (bit_width)) - 1
-    hex_format = '#x' if short_hex else '#0' + str(int(bit_width / 8) * 2 + 2) + 'x'
-    return f'{num & dtype_mask:{hex_format}}'
-
-def hexstr_to_dtype_int(hexstr: str, dtype: str) -> int:
-    if len(hexstr) == 0:
-        return 0
-    assert hexstr[0] != '-'
-    assert set(hexstr.lstrip('0xX')).issubset(string.hexdigits)
-    dtype = dtype.strip()
-    assert dtype[0] in ('i', 'u')
-    bit_width = int(dtype[1:])
-    assert bit_width in (8, 16, 32, 64)
-    dtype_mask = (1 << (bit_width)) - 1
-    # check if the number is in range
-    raw_num = int(hexstr, 0)
-    max_unsigned_value = (1 << (bit_width)) - 1
-    assert 0 <= raw_num <= max_unsigned_value
-    # convert to signed if needed
-    comp_num = int(hexstr, 0) & dtype_mask
-    if dtype[0] == 'i':
-        max_signed_value = (1 << (bit_width - 1)) - 1
-        if comp_num > max_signed_value:
-            comp_num -= (1 << bit_width)
-    return comp_num
-
-
 def dtype_to_width(dtype: str) -> InstWidth:
     dtype = dtype.strip()
     assert dtype[0] in ('i', 'u')
@@ -266,3 +240,53 @@ def dtype_to_width(dtype: str) -> InstWidth:
     assert bit_width in (8, 16, 32, 64)
     width = int(bit_width / 8)
     return InstWidth(width)
+
+
+def get_bracket_elems(s: str, merge_offset: bool = True) -> list[int|InstMemBase|tuple[int,bool]]:
+    """
+    Returns:
+        list[object]: list of elements in the bracket.
+            tuple[int,bool]: (reg, ++)
+            int: imm
+            InstMemBase: base
+    """
+    assert s.lower() == s   # must be lower case
+
+    s = s.strip(' []').replace(' ', '')
+    if not s:
+        return []
+    parts = s.split('+')
+    # merge ['x', '', ''] to ['x++']
+    if len(parts) >= 3:
+        for i in range(0, len(parts)-2):
+            if parts[i] and not parts[i+1] and not parts[i+2]:
+                parts[i] += '++'
+                parts[i+1] = parts[i+2] = None
+    parts = [p for p in parts if p is not None]
+    if '' in parts:
+        # why is there still '+' unmerged?
+        raise SyntaxError(f'illegal address expression {s}')
+    result = []
+    offset = 0
+    has_offset = False
+    for p in parts:
+        if p.startswith('r'):
+            self_inc = p.endswith('++')
+            p = p.rstrip('+')   # we have done the check above, so it's safe to blind rstrip '+
+            reg_num = get_reg_num(p)
+            if reg_num < 0:
+                raise SyntaxError(f'illegal register r{p}')
+            result.append((reg_num, self_inc))
+        elif is_imm(p):
+            if merge_offset:
+                has_offset = True
+                offset += int(p, 0)
+            else:
+                result.append(int(p, 0))
+        elif p in ['main', 'heap', 'alias', 'aslr']:
+            result.append(InstMemBase(p))
+        else:
+            raise SyntaxError(f'illegal `{p}` in address expression {s}')
+    if merge_offset and has_offset:
+        result.append(offset)
+    return result

@@ -16,27 +16,22 @@ window.addEventListener('DOMContentLoaded', () => {
     });
 
     leftTextarea.addEventListener('paste', (event) => {
-        // if now - last_req_time < 10s, then return
-        if (Date.now() - last_req_time < 10000) {
-            return;
-        }
-        last_req_time = Date.now();
         const pastedText = event.clipboardData.getData('text');
         leftTextarea.value = pastedText;
         dmnt_dism(pastedText);
     });
 
-    var last_req_time = 0;
+    var last_active_time = 0;
+    var last_req_text = '';
+
     leftTextarea.addEventListener('input', (event) => {
-        // if now - last_req_time < 10s, then return
-        if (Date.now() - last_req_time < 10000) {
-            return;
-        }
-        last_req_time = Date.now();
-        dmnt_dism(event.target.value);
+        last_active_time = Date.now();
     });
 
     function dmnt_dism(text) {
+        last_active_time = Date.now();
+        last_req_text = text;
+
         fetch('/dmnt_dism', {
             method: 'POST',
             headers: {
@@ -57,4 +52,17 @@ window.addEventListener('DOMContentLoaded', () => {
             })
             .catch((error) => console.error(error));
     }
+
+    const autoDism = setInterval(() => {
+        if (leftTextarea.value.length == 0) {
+            return;
+        }
+        if (leftTextarea.value == last_req_text) {
+            return;
+        }
+        if (Date.now() - last_active_time < 5000) {
+            return;
+        }
+        dmnt_dism(leftTextarea.value);
+    }, 1000);
 });

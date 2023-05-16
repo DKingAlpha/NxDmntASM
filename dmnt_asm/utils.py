@@ -98,16 +98,14 @@ def extract_dtype(s: str) -> tuple[str, str]:
     # find dtype.
     dtype = ''
     # regex find iXX/uXXX or ptr without digit
-    m = re.findall(r'(i|u|ptr)(\d+)?', s)
+    m = re.findall(r'\b([ui]\d+|ptr)\b', s)
     if not m:
         return (dtype, s)
     if len(m) > 1:
         raise SyntaxError(f'illegal multiple dtypes in {s}')
-    sign, width = m[0]
-    if sign == 'ptr' and width:
-        raise SyntaxError(f'ptr cannot have width {width} in {s}')
-    if width not in ['8', '16', '32', '64']:
-        raise SyntaxError(f'illegal dtype {sign}{width} in {s}')
-    dtype = sign + width
-    asm = re.sub(r'\s+' + dtype + r'\s+', '', s)
+    dtype = m[0]
+    if dtype[1:] not in ['8', '16', '32', '64']:
+        raise SyntaxError(f'illegal dtype {dtype} in {s}')
+    asm = re.sub(r'\b' + dtype + r'\b', '', s).strip()
+    asm = re.sub('\s+', ' ', asm)
     return (dtype, asm)

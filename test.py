@@ -14,7 +14,12 @@ def test_ins(inst: vm_inst):
     d_inst = vm_inst_dism(mc_inst)
     d_mc_inst = d_inst.asm()
     d_dism_inst = d_inst.dism()
+    # test load&dissemble
     assert(str(inst) == str(d_inst))
+    # test load&assemble
+    a_inst = vm_inst_asm(dism_inst)
+    a_asm = a_inst.asm()
+    assert(a_asm == mc_inst)
     print(inst)
 
 def test_parser():
@@ -59,8 +64,8 @@ def test_api():
     test_ins(vm_if_reg_COND_imm().build(1, '>', 0x12, 'u8'))
     test_ins(vm_save_restore().build(1, InstSaveRestoreRegOp.SAVE, 2))
     test_ins(vm_save_restore().build(1, InstSaveRestoreRegOp.RESTORE, 2))
-    test_ins(vm_save_restore().build(1, InstSaveRestoreRegOp.CLEAR, 2))
-    test_ins(vm_save_restore().build(1, InstSaveRestoreRegOp.REG_ZERO, 2))
+    test_ins(vm_save_restore().build(1, InstSaveRestoreRegOp.CLEAR, 0))
+    test_ins(vm_save_restore().build(1, InstSaveRestoreRegOp.REG_ZERO, 0))
     test_ins(vm_save_restore_mask().build(InstSaveRestoreRegOp.SAVE, [2,3]))
     test_ins(vm_save_restore_mask().build(InstSaveRestoreRegOp.RESTORE, [2,3]))
     test_ins(vm_save_restore_mask().build(InstSaveRestoreRegOp.CLEAR, [2,3]))
@@ -78,5 +83,5 @@ def test_api():
 
 if __name__ == '__main__':
     #test_error()
-    test_parser()
-    #test_api()
+    #test_parser()
+    test_api()

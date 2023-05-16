@@ -115,7 +115,7 @@ class vm_inst(ABC):
     @staticmethod
     def _normalize_mc(raw_mc: str) -> str:
         mc = raw_mc.replace(' ', '')
-        if not is_imm(mc.replace(' ', '')):
+        if not set(mc.replace(' ', '')).issubset(string.hexdigits):
             return ''
         # dont enable this, it will break a lot of things
         # dword alignment, compatible with ams
@@ -156,6 +156,73 @@ def vm_inst_dism(mc_line: str) -> vm_inst:
                     return ins
     raise SyntaxError(f'invalid instruction: {mc_line}')
 
+
+def _get_bracket_elems(s: str, merge_offset: bool = True) -> list[int|InstMemBase|tuple[int,bool]]:
+    """
+    Returns:
+        list[object]: list of elements in the bracket.
+            tuple[int,bool]: (reg, ++)
+            int: imm
+            InstMemBase: base
+    """
+    assert s.lower() == s   # must be lower case
+
+    s = s.strip(' []').replace(' ', '')
+    if not s:
+        return []
+    parts = s.split('+')
+    # merge ['x', '', ''] to ['x++']
+    if len(parts) >= 3:
+        for i in range(0, len(parts)-2):
+            if parts[i] and not parts[i+1] and not parts[i+2]:
+                parts[i] += '++'
+                parts[i+1] = parts[i+2] = None
+    parts = [p for p in parts if p is not None]
+    if '' in parts:
+        # why is there still '+' unmerged?
+        raise SyntaxError(f'illegal address expression {s}')
+    result = []
+    offset = 0
+    has_offset = False
+    for p in parts:
+        if p.startswith('r'):
+            self_inc = p.endswith('++')
+            p = p.rstrip('+')   # we have done the check above, so it's safe to blind rstrip '+
+            reg_num = get_reg_num(p)
+            if reg_num < 0:
+                raise SyntaxError(f'illegal register r{p}')
+            result.append((reg_num, self_inc))
+        elif is_imm(p):
+            if merge_offset:
+                has_offset = True
+                offset += int(p, 0)
+            else:
+                result.append(int(p, 0))
+        elif p in ['main', 'heap', 'alias', 'aslr']:
+            result.append(InstMemBase(p))
+        else:
+            raise SyntaxError(f'illegal `{p}` in address expression {s}')
+    if merge_offset and has_offset:
+        result.append(offset)
+    return result
+
+### helper
+def _get_base_offset_regs_from_bracket(s: str) -> list[InstMemBase|None, int, list[tuple[int, bool]]]:
+    elems = _get_bracket_elems(s)
+    base = None
+    offset = 0
+    regs = []
+    for elem in elems:
+        if isinstance(elem, InstMemBase):
+            if base is not None:
+                raise SyntaxError(f'duplicate base in {s}')
+            base = elem
+        elif isinstance(elem, int):
+            offset = elem
+        elif isinstance(elem, tuple):
+            regs.append(elem)
+    return (base, offset, regs)
+
 def vm_inst_asm(raw_line: str) -> vm_inst:
     # fast check for nested expression
     if raw_line.count('[') > 1 or raw_line.count(']') > 1:
@@ -165,7 +232,7 @@ def vm_inst_asm(raw_line: str) -> vm_inst:
 
     lower_line = raw_line.strip().lower()
     parts = [i.strip() for i in lower_line.split(' ') if i.strip()]
-    dtype, asm_line = extract_dtype(parts)
+    dtype, asm_line = extract_dtype(lower_line)
     if asm_line == 'nop':
         return vm_nop().build()
     elif parts[0] == 'if':
@@ -191,35 +258,25 @@ def vm_inst_asm(raw_line: str) -> vm_inst:
         if cond not in ['=', '!=', '>', '<', '>=', '<=']:
             raise SyntaxError(f'illegal condition {cond} if statement')
         cond = InstCondition(cond)
-        if op1.startswith('r'):
-            pass
-        elif op1[0] == '[' and op1[-1] == ']':
+        if op1[0] == '[' and op1[-1] == ']':
             if not is_imm(op2):
                 raise SyntaxError(f'{op2} is not imm in if statement')
             value = int(op2, 0)
-            elems = get_bracket_elems(op1)
-            if not (len(elems) == 2 and isinstance(elems[0], InstMemBase) and isinstance(elems[1], int)):
-                raise SyntaxError(f'illegal {op1} in if statement')
-            return vm_if_off_COND_imm().build(elems[1], cond, value, elems[0], dtype)
+            base, offset, regs = _get_base_offset_regs_from_bracket(op1)
+            if base is None:
+                raise SyntaxError(f'missing mem base here')
+            if len(regs):
+                raise SyntaxError(f'regs are not supported as left operand in if statement')
+            return vm_if_off_COND_imm().build(offset, cond, value, base, dtype)
         elif op2[0] == '[' and op2[-1] == ']':
             rN = get_reg_num(op1)
             if rN < 0:
                 raise SyntaxError(f'illegal {op1} in if statement')
-            elems = get_bracket_elems(op2)
-            base = None
-            offset = 0
-            regs = []
-            for elem in elems:
-                if isinstance(elem, InstMemBase):
-                    if base is not None:
-                        raise SyntaxError(f'duplicate base in {op2}')
-                    base = elem
-                elif isinstance(elem, int):
-                    offset = elem
-                elif isinstance(elem, tuple):
-                    if elem[1] == True:
-                        raise SyntaxError(f'r{elem[0]}++ is not supported in if statement')
-                    regs.append(elem[0])
+            base, offset, regs = _get_base_offset_regs_from_bracket(op2)
+            for reg in regs:
+                if reg[1]:
+                    raise SyntaxError(f'r{reg[0]}++ is not supported in if statement')
+            regs = [reg[0] for reg in regs]
             if base is not None:
                 if len(regs) >= 2:
                     raise SyntaxError(f'illegal {op2} in if statement')
@@ -255,6 +312,8 @@ def vm_inst_asm(raw_line: str) -> vm_inst:
             return vm_if_reg_COND_reg().build(rN, cond, rM, dtype)
         else:
             raise SyntaxError('invalid if statement')
+    elif asm_line == 'else':
+        return vm_else().build()
     elif asm_line == 'endif':
         return vm_endif().build()
     elif asm_line == 'pause':
@@ -270,35 +329,23 @@ def vm_inst_asm(raw_line: str) -> vm_inst:
         reg = int(match.group(1))
         count = int(match.group(2))
         return vm_loop().build(reg, count)
-    elif asm_line == 'endloop':
-        if len(parts) != 2 or parts[1]:
+    elif parts[0] == 'endloop':
+        if len(parts) != 2:
             raise SyntaxError('invalid endloop statement')
-        match = re.match(r'^endloop\s+r(\d+)$', asm_line)
-        if not match:
-            raise SyntaxError('invalid endloop statement')
-        reg = int(match.group(1))
+        reg = get_reg_num(parts[1])
+        if reg < 0:
+            raise SyntaxError(f'illegal register {parts(1)} in endloop statement')
         return vm_endloop().build(reg)
     elif parts[0] == 'log':
         match = re.match(r'^log\s+(\d+)\s+(.*)$', asm_line)
         if not match:
             raise SyntaxError('invalid log statement')
         logid = int(match.group(1))
-        elems = get_bracket_elems(match.group(2))
-        # parts are list[int|InstMemBase|tuple[int,bool]]
-        base = None
-        offset = 0
-        regs = []
-        for elem in elems:
-            if isinstance(elem, int):
-                offset += elem
-            elif isinstance(elem, tuple):
-                if elem[1] == True:
-                    raise SyntaxError(f'r{elem[0]}++ is not supported in log statement')
-                regs.append(elem[0])
-            elif isinstance(elem, InstMemBase):
-                if base is not None:
-                    raise SyntaxError('duplicate base in log statement')
-                base = elem
+        base, offset, regs = _get_base_offset_regs_from_bracket(match.group(2))
+        for reg in regs:
+            if reg[1]:
+                raise SyntaxError(f'r{reg[0]}++ is not supported in if statement')
+        regs = [reg[0] for reg in regs]
         if base is not None:
             if regs:
                 if len(regs) >= 2:
@@ -328,6 +375,8 @@ def vm_inst_asm(raw_line: str) -> vm_inst:
         if '=' not in asm_line:
             raise SyntaxError('invalid static statement')
         op1, op2 = asm_line.split('=')
+        op1 = op1.strip()
+        op2 = op2.strip()
         if op1.startswith('r') and op2.startswith('static'):
             return vm_rw_static_reg().build(int(op1[1:]), int(op2[6:].strip('[]'), 0))
         elif op1.startswith('static') and op2.startswith('r'):
@@ -342,6 +391,8 @@ def vm_inst_asm(raw_line: str) -> vm_inst:
         # save[i,j,...k] = 0
         if '=' in asm_line:
             op1, op2 = asm_line.split('=')
+            op1 = op1.strip()
+            op2 = op2.strip()
             if op1.startswith('save') and op2.startswith('r'):
                 save_indices = op1[4:].strip('[]')
                 if ',' in save_indices:
@@ -351,15 +402,19 @@ def vm_inst_asm(raw_line: str) -> vm_inst:
             elif op1.startswith('r') and op2.startswith('save'):
                 return vm_save_restore().build(int(op1[1:]), InstSaveRestoreRegOp.RESTORE, int(op2[4:].strip('[]'), 0))
             elif op1.startswith('save') and op2.strip() == '0':
-                destreg = int(op1[4:].strip('[]'), 0)
-                return vm_save_restore().build(destreg, InstSaveRestoreRegOp.CLEAR, 0)
+                dests = op1[4:].strip('[]')
+                if ',' in dests:
+                    return vm_save_restore_mask().build(InstSaveRestoreRegOp.CLEAR, dests)
+                else:
+                    destreg = int(dests, 0)
+                    return vm_save_restore().build(destreg, InstSaveRestoreRegOp.CLEAR, 0)
         else:
             if parts[0] != 'save':
                 raise SyntaxError('invalid save statement')
-            return vm_save_restore_mask().build(InstSaveRestoreRegOp.SAVE, asm_line.split(' ')[1])
+            return vm_save_restore_mask().build(InstSaveRestoreRegOp.SAVE, ' '.join(parts[1:]))
     elif 'restore' in asm_line:
         # restore rA, rB, ..., rN
-        return vm_save_restore_mask().build(InstSaveRestoreRegOp.RESTORE, asm_line.split(' ')[1])
+        return vm_save_restore_mask().build(InstSaveRestoreRegOp.RESTORE, ' '.join(parts[1:]))
     elif re.match(r'r[r\d,]+=0', asm_line.replace(' ', '')):
         # rN = 0
         # r1,r2,... = 0
@@ -373,7 +428,7 @@ def vm_inst_asm(raw_line: str) -> vm_inst:
     elif '=' in asm_line:
         # this must be an r/w instruction.
         # we have dealt with other instructions with '=' above
-        return _vm_inst_asm_rw(asm_line)
+        return _vm_inst_asm_rw(dtype, asm_line)
     else:
         raise SyntaxError(f'invalid statement')
 
@@ -391,7 +446,7 @@ def _vm_inst_asm_rw(dtype: str, asm_line: str) -> vm_inst:
 
     # {dtype} rD = rS OP value
     # {dtype} rD = rS OP rs
-    match = re.match(r'^r(\d+)\s*=\s*r(\d+)\s*([+-*<>&|^]{1,2})\s*(.+)$', asm_line)
+    match = re.match(r'^r(\d+)\s*=\s*r(\d+)\s*([\+\-\*<>&|^]{1,2})\s*(.+)$', asm_line)
     if match:
         op = match.group(3)
         if op not in ['+', '-', '*', '<<', '>>', '&', '|', '^']:
@@ -411,7 +466,7 @@ def _vm_inst_asm_rw(dtype: str, asm_line: str) -> vm_inst:
 
     # reg update (legacy, use next instruction instead)
     # {dtype} rN OP= value
-    match = re.match(r'^r(\d+)\s*([+-*<>]{1,2})=\s*(.+)$', asm_line)
+    match = re.match(r'^r(\d+)\s*([\+\-\*<>]{1,2})=\s*(.+)$', asm_line)
     if match:
         op = match.group(2)
         if op not in ['+', '-', '*', '<<', '>>']:
@@ -430,33 +485,20 @@ def _vm_inst_asm_rw(dtype: str, asm_line: str) -> vm_inst:
         if is_imm(match.group(2)):
             return vm_move_reg().build(int(match.group(1)), int(match.group(2), 0))
         else:
-            raise SyntaxError(f'invalid imm {match.group(2)}')
+            # well could be and [...] expression. dont raise error here
+            pass
 
-    ### helper
-    def normalize_base_offset_regs_from_bracket(s: str) -> list[InstMemBase|None, int, list[tuple[int, bool]]]:
-        elems = get_bracket_elems(s)
-        base = None
-        offset = 0
-        regs = []
-        for elem in elems:
-            if isinstance(elem, InstMemBase):
-                if base is not None:
-                    raise SyntaxError(f'duplicate base in {s}')
-                base = elem
-            elif isinstance(elem, int):
-                offset = elem
-            elif isinstance(elem, tuple):
-                regs.append(elem)
-        return (base, offset, regs)
     ### the worst part comes
     op1, op2 = asm_line.replace(' ', '').split('=')
+    op1 = op1.strip()
+    op2 = op2.strip()
     if op1[0] == '[' and op1[-1] == ']':
         # {dtype} [base + rN {+offset}] = value
         # {dtype} [rM{++} {+rN}] = value
         # {dtype} [rM{++} {+offset}] = rS
         # {dtype} [rM{++} {+rN}] = rS
         # {dtype} [base + {+offset {+rM{++}}}] = rS
-        base, offset, regs = normalize_base_offset_regs_from_bracket(op1)
+        base, offset, regs = _get_base_offset_regs_from_bracket(op1)
         if is_imm(op2):
             value = int(op2, 0)
             if base is not None:
@@ -508,7 +550,7 @@ def _vm_inst_asm_rw(dtype: str, asm_line: str) -> vm_inst:
         rN = get_reg_num(op1)
         if rN < 0:
             raise SyntaxError(f'invalid register {op1}')
-        base, offset, regs = normalize_base_offset_regs_from_bracket(op2)
+        base, offset, regs = _get_base_offset_regs_from_bracket(op2)
         if len(regs):
             raise SyntaxError(f'registers not allowed in {op2}')
         if base is not None:
@@ -1421,7 +1463,7 @@ class vm_store_reg(vm_inst):
             elif p.O == InstOffsetType.MEMBASE_IMM:
                 addr_expr += f' + {p.a:#x}'
             elif p.O == InstOffsetType.MEMBASE_IMM_OFFREG:
-                addr_expr += f' + {p.a:#x} + r{p.x}'
+                addr_expr += f' + {p.a:#x} + r{p.R}'
             else:
                 assert False, f'invalid offset type {p.O}'
         return f'{p.T} [{addr_expr}] = r{p.S}'
@@ -1919,8 +1961,8 @@ class vm_save_restore_mask(vm_inst):
         if isinstance(indicies, str):
             for index in indicies.split(','):
                 index = index.strip().lstrip('r')
-                assert index[1:].isdigit()
-                index = int(index[1:])
+                assert index.isdigit()
+                index = int(index)
                 assert 0 <= index < 16
                 mask |= 1 << index
         elif isinstance(indicies, list):
@@ -2160,7 +2202,7 @@ class _vm_log(vm_inst):
         elif p.X == InstDebugType.REG_OFFREG:
             return f'{self.CODE_NAME} {p.I} {p.T} [r{p.m} + r{p.n}]'
         elif p.X == InstDebugType.REG:
-            return f'{self.CODE_NAME} {p.I} {p.T} [r{p.n}]'
+            return f'{self.CODE_NAME} {p.I} {p.T} [r{p.m}]'
 
 
 class vm_log_off(_vm_log):

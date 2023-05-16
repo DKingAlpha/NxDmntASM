@@ -1,0 +1,19 @@
+version: "3.8"
+
+services:
+  dmnt_vm:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: flask
+    restart: unless-stopped
+    container_name: dmnt_vm
+    volumes:
+      - .:/app
+    command: 
+      - server/app.py
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.nx_dmnt_vm.rule=Host(`nx.tot.im`)
+      - traefik.http.routers.nx_dmnt_vm.service=nx_dmnt_vm
+      - traefik.http.services.nx_dmnt_vm.loadbalancer.server.port=5000

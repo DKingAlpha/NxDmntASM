@@ -1,11 +1,13 @@
 .container {
-    height: 100%;
+    height: 80%;
     display: flex;
+}
+.titles {
 }
 
 textarea {
     width: 45%;
-    height: 80%; /* Set the height to match the parent container */
+    height: 100%; /* Set the height to match the parent container */
     margin: 10px;
     resize: none; /* Disable textarea resizing */
     overflow: auto; /* Add scrollbars when necessary */
@@ -14,4 +16,10 @@ html, body {
     height: 100%;
     margin: 0;
     padding: 0;
-  }
+}
+
+h1,h2,h3,h4,h5 {
+    text-align: center;
+    margin: 0;
+    padding: 0;
+}

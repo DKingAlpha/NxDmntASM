@@ -915,7 +915,7 @@ class vm_move_reg(vm_inst):
         return super()._asm()
 
     def dism(self) -> str:
-        return f'r{self.prop.R} = {self.prop.V}'
+        return f'r{self.prop.R} = {self.prop.V:#x}'
     
 
 class vm_load(vm_inst):

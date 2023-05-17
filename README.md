@@ -12,46 +12,43 @@ Feel the vibe in following example, and begin write your own code on the fly.
 
 I believe you can totally get it.
 
-## Showcase
+## Example
 
 ```lua
-[Max Status]
-u64 r15 = [main + 0x724070]
-u64 r15 += 0x40
-loop r14 to 7
-    u32 [r15] = 0x270f
-    u64 r15 += 0x4
-endloop r14
-endif
-u64 r15 = [main + 0x724070]
-u64 r15 += 0x60
-loop r14 to 4
-u32 [r15] = 0x270f
-u64 r15 += 0x4
-endloop r14
+[(ZR) Increase Sharon's Level +1 (AMS only)]
+u32 r12 = [heap + 0x2327c952]
+if u32 r12 < 0x63
+    if key ZR
+        u32 r12 += 0x1
+        u32 [heap + 0x2327c952] = r12
+    endif
 endif
 
-[RS ←/→ Switch Sub-Weapon (AMS only)]
-u64 r12 = [main + 0x1cc6f08]
-u64 r12 = [r12 + 0x2c8]
-u64 r12 = [r12 + 0x58]
-u64 r12 = [r12 + 0x48]
-u64 r12 = [r12 + 0x50]
-u64 r12 += 0x1877e
-u64 r13 = r12
-u64 r13 = [r13 + 0x0]
-if key RSTICK_RIGHT
-    if u8 r13 < 0x6
-        u32 r13 += 0x1
-        u8 [r12] = r13
+[Increase Day (L+Up)]
+if key L|UP
+    if u32 [heap + 0x2dd871ec] < 0x1e
+        u32 r15 = [heap + 0x2dd871ec]
+        u32 r15 += 0x1
+        u32 [heap + 0x2dd871ec] = r15
     endif
 endif
-if key RSTICK_LEFT
-    if u8 r13 > 0x1
-        u32 r13 -= 0x1
-        u8 [r12] = r13
-    endif
+
+[  2.2.1.メイン/Main]
+if key ZR
+    u64 r15 = [main + 0x5ed9e98]
+    u64 r15 = [r15 + 0xb8]
+    u64 r15 = [r15 + 0x60]
+    u64 r15 = [r15 + 0x20]
+    u64 r15 += 0x20
+    loop r14 to 16
+        u32 [r15++] = 0x7fdf06ff
+        u16 [r15++] = 0xf9ff
+        u8 [r15++] = 0xff
+        u64 r15 += 0x1
+        u64 [r15++] = 0xffffffffffffffff
+    endloop r14
 endif
+
 ```
 
 

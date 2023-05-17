@@ -1,24 +1,18 @@
-# dmnt Cheat VM ASM
+# NxDmntASM
 
-An assembler/disassembler for dmnt cheat vm.
+Dead Simple Assembler/Disassembler for Atmosphere dmnt Cheat VM.
 
-Tested on Atmosphere.
+## Online Demo
 
-**WIP**
+[nx.tot.im](https://nx.tot.im/)
 
-Disassembler and Python API have been implemented.
+## ASM Syntax TLDR
 
-Assembler is stilling being working on. Should be quick.
+Feel the vibe in following example, and begin write your own code on the fly.
 
-## Feedback Needed!
+I believe you can totally get it.
 
-Please leave a comment on issue page if you have any suggestions on syntax.
-
-(I'm considering getting rid of store/load/set ...)
-
-## Demo
-
-Disassembly Output
+## Showcase
 
 ```lua
 [Max Status]
@@ -61,56 +55,70 @@ endif
 ```
 
 
-## ASM Syntax TLDR
+## Cheat VM
 
-Feel the vibe in example, and write your own code. I believe you can get it.
+The Cheat VM is a virtual machine that provides a set of registers and save slots for executing instructions. It supports various operations and data types, but does not include division or floating-point capabilities.
 
-### About Cheat VM
-In the Cheat VM, you are provided with:
-  - 0-15 registers as rN
-  - 0-15 save slots as save[N]
-  - 0-0x7f static registers as read-only static registers
-  - 0x80-0xff static registers as write-only static registers
+### Glossary
 
-No division, no floating point.
+- `reg`: Virtual machine register.
+- `mem`: Game process memory.
+- The Cheat VM does not involve real registers, and it does not have its own memory space.
+- `value`: Immediate value.
+- `off` or `offset`: Offset immediate value.
+- `offreg`: Offset register.
+- `base`: Memory base, which can be one of the following: `main`, `heap`, `alias`, `aslr`.
+- `dtype`: Data type, such as u8/u16/u32/u64/i8.../i64/ptr.
+- `{ .. }`: Optional.
 
-### About Syntax
-Each line is translated to one instruction in the end, so do not nest with other complex expressions, will not work.
+### Registers and Save Slots
 
-The assembler does not support variable. You must use vm register directly.
+The Cheat VM includes the following components:
 
-You can omit data type but it's strongly recommended to specify it. Otherwise it will be u32 in most case.
+- **Registers**: There are 16 general-purpose registers labeled as r0 to r15.
+- **Save Slots**: There are 16 save slots labeled as save[0] to save[15].
+- **Static Registers**: There are 128 static registers, from 0x00 to 0x7f, which are read-only.
+- **Write-Only Static Registers**: There are 128 write-only static registers, from 0x80 to 0xff.
 
-All codes are case in-sensitive.
+### Syntax
 
-As for immediate value, you can use `0x` prefix for hex, `0b` prefix for binary, `0o` prefix for octal, or just plain decimal.
+The Cheat VM assembler follows a specific syntax for writing instructions. Here are some important points to keep in mind:
 
-#### Glossary
+- Each line of code is translated into a single instruction.
+- Avoid nesting complex expressions within a single line, as it may not work as expected.
+- The assembler does not support variables. You must use the VM registers directly.
+- Data types can be omitted, but it is strongly recommended to specify them. By default, the data type is assumed to be u32 (unsigned 32-bit integer).
+- The case of the code is not significant; it is case-insensitive.
+- Immediate values can be represented in various formats:
+  - Hexadecimal: Use the `0x` prefix, followed by the hex value (e.g., `0x1A`).
+  - Binary: Use the `0b` prefix, followed by the binary value (e.g., `0b1010`).
+  - Octal: Use the `0o` prefix, followed by the octal value (e.g., `0o27`).
+  - Decimal: Plain decimal values can be used without any prefix (e.g., `42`).
 
-- `reg`: vm reg
-- `mem`: game process memory.
-- No real registers are involved. The vm does not have memory space either.
-- `value`: immediate value.
-- `off` or `offset`: offset immediate value.
-- `offreg`: offset register.
-- `base`: memory base, one of `main`, `heap`, `alias`, `aslr`.
-- `dtype`: u8/u16/u32/u64/i8.../i64/ptr
-- `{ .. }`: optional
+Feel free to explore the Cheat VM and experiment with its features using the provided syntax and components.
 
 ### R/W Memory
 
-`=` means an read/write instruction.
+The `=` operator indicates a read/write instruction.
 
-You can do reg<->mem, reg<->reg, reg<->save, reg<->static
-You can also do reg<-imm, mem<-imm, save<-0
+You can perform the following operations:
+- `reg<->mem`: Transfer data between a register and game process memory.
+- `reg<->reg`: Transfer data between two registers.
+- `reg<->save`: Transfer data between a register and a save slot.
+- `reg<->static`: Transfer data between a register and a static register.
 
-Use `[ .. ]` to dereference memory. The usage and limitation are the same as other ASM. 
+You can also perform the following assignments:
+- `reg<-imm`: Assign an immediate value to a register.
+- `mem<-imm`: Assign an immediate value to a memory location.
+- `save<-0`: Assign the value `0` to a save slot.
 
-You can NOT do mem<->mem in one line.
+To dereference memory, use `[ .. ]`. The usage and limitations are the same as in other assembly languages.
 
-You may even add offset imm or/and offset register to reg/mem while reading/writing.
+Note: You cannot transfer data directly between two memory locations (`mem<->mem`) in a single line.
 
-**For Accurate Rules, Check Syntax Below**
+You can add an offset immediate value or an offset register to registers or memory locations while performing read/write operations.
+
+For fully detailed syntax rules, please refer to the section below.
 
 ```bash
 # mem<-imm

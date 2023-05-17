@@ -23,14 +23,32 @@ def dmnt_dism():
         nonlocal errors
         errors.append(msg)
     p = CheatParser(err_handler)
-    all_ok = p.parse(text)
-    dism = p.dumps(indent=4)
-
+    all_ok = p.load(text)
+    dism = p.dism(indent=4)
     return jsonify({
         'success': all_ok,
         'dism': dism,
         'errors': errors
     })
+
+
+@app.route('/dmnt_asm', methods=['POST'])
+def dmnt_asm():
+    text = request.form['text']
+    # Perform any processing on the text if needed
+    errors = []
+    def err_handler(msg):
+        nonlocal errors
+        errors.append(msg)
+    p = CheatParser(err_handler)
+    all_ok = p.load(text)
+    asm = p.asm(indent=4)
+    return jsonify({
+        'success': all_ok,
+        'asm': asm,
+        'errors': errors
+    })
+
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", debug=False)

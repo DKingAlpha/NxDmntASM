@@ -171,7 +171,7 @@ rN = value  # always 64-bit
 
 ```
 
-## Control Flow
+### Control Flow
 
 ```bash
 #####################
@@ -271,10 +271,12 @@ from pathlib import Path
 # parse vm code
 parser = CheatParser()
 content = Path('CHEAT.txt').read_text(encoding='utf-8', errors='backslashreplace')
-all_ok = parser.parse(content)
-print(parser.dumps(indent=2))
+all_ok = parser.load(content)
+print(parser.dism(indent=2))
+print(parser.asm(indent=2))
 
 # generate vm code from api
 from dmnt_asm.instructions import *
 vm_XX().build( ... args ...).asm()
+vm_XX().build( ... args ...).dism()
 ```

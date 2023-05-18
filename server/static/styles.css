@@ -1,17 +1,28 @@
-.container {
-    height: 80%;
+.multi-ce-area {
+    height: 70%;
     display: flex;
 }
-.titles {
+
+.log-area {
+    height: 20%;
+    width: 95%;
+    display: flex;
 }
 
-textarea {
+.ce-area {
     width: 45%;
     height: 100%; /* Set the height to match the parent container */
-    margin: 10px;
+    margin: 0px;
     resize: none; /* Disable textarea resizing */
     overflow: auto; /* Add scrollbars when necessary */
 }
+
+#right-ce {
+    /* align div to right */
+    margin-left: auto; 
+    margin-right: 0;
+}
+
 html, body {
     height: 100%;
     margin: 0;

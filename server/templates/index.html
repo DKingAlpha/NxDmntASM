@@ -3,18 +3,27 @@
 <head>
     <title>dmnt Cheat VM ASM / DISM </title>
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='styles.css') }}">
+    <link
+    rel="stylesheet"
+    data-name="vs/editor/editor.main"
+    href="/static/min/vs/editor/editor.main.css"
+/>
 </head>
 <body>
     <div class="titles">
         <h1> Switch Cheat Code Asm / Dism </h1>
-        <h3> 大道至简 </h3>
-        <h5> 能用就行 </h5>
     </div>
-    <div class="container">
-        <textarea id="leftTextarea" placeholder="Paste or drag cheat txt here"></textarea>
-        <textarea id="rightTextarea" placeholder="Edit cheat assembly here"></textarea>
+    <div class="multi-ce-area">
+        <div class="ce-area" id="left-ce"></div>
+        <div class="ce-area" id="right-ce"></div>
     </div>
-
+    <textarea class="log-area" id="bottom-log" readonly="readonly"></textarea>
+    <script>
+        var require = { paths: { vs: '/static/min/vs' } };
+    </script>
+    <script src="/static/min/vs/loader.js"></script>
+    <script src="/static/min/vs/editor/editor.main.nls.js"></script>
+    <script src="/static/min/vs/editor/editor.main.js"></script>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>

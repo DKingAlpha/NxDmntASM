@@ -259,12 +259,23 @@ function setLog(log) {
 window.addEventListener('DOMContentLoaded', ()=>{
     setupNxDmntAsm();
     setupAutoAsm();
+    for (const k of ['left_code', 'right_code', 'log']) {
+        if (localStorage.getItem(k) == null) {
+            localStorage.setItem(k, '')
+        }
+    }
     editor_left.setValue(localStorage.getItem('left_code'));
     editor_right.setValue(localStorage.getItem('right_code'));
     document.getElementById("bottom-log").value = localStorage.getItem("log");
 
     if (editor_left.getValue().length == 0) {
-        editor_left.setValue(`{Diablo II Resurrected Version 1.0.0.2 TID 0100726014352000 BID 7E78CC35BAF51EA2}
+        editor_left.setValue(getExampleCode());
+    }
+});
+
+
+function getExampleCode() {
+    return `{Diablo II Resurrected Version 1.0.0.2 TID 0100726014352000 BID 7E78CC35BAF51EA2}
 
 [60 FPS]
 04000000 0412A204 00000001
@@ -456,6 +467,5 @@ C0451400 000D0000
 780E1000 00000050
 31550000
 [Credits To TomSwitch]
-        `);
-    }
-});
+`;
+}

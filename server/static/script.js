@@ -223,7 +223,7 @@ function setupAutoAsm() {
     }
 
     const autoDism = setInterval(() => {
-        if (Date.now() - last_active_time < 5000) {
+        if (Date.now() - last_active_time < 3000) {
             return;
         }
         if (last_input_area == 'left') {
@@ -243,7 +243,7 @@ function setupAutoAsm() {
             if (rightSrc == last_req_right_text) {
                 return;
             }
-            dmnt_asm(leftSrc);
+            dmnt_asm(rightSrc);
         } else {
             setLog('error');
         }

@@ -1,6 +1,21 @@
 var editor_left = null;
 var editor_right = null;
 
+function downloadTextToFile(text, filename) {
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+  
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+  
+    document.body.appendChild(link);
+    link.click();
+  
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+}
+
 function setupNxDmntAsm()
     {
     // Register a new language
@@ -17,7 +32,7 @@ function setupNxDmntAsm()
                 [/\b[r][\d]{1,2}\b/i, "register"],
                 [/\b[ui][\d]{1,2}\b/i, "datatype"],
                 [/\bptr\b/i, "datatype"],
-                [/\b(?:main|heap|alias|aslr\b)/i, "membase"],
+                [/\b(?:main|heap|alias|aslr)\b/i, "membase"],
                 [/\b[\da-fA-F]{8}\b/, "vmmc"],
                 [/\b(?:0b[01]+|0x[\dA-Fa-f]+|0o[0-7]+|\d+)\b/, "imm"],
             ],
@@ -25,12 +40,12 @@ function setupNxDmntAsm()
     });
 
     // Define a new theme that contains only rules that match this language
-    monaco.editor.defineTheme("myCoolTheme", {
+    monaco.editor.defineTheme("NxDmntAsmDefaultTheme", {
         base: "vs",
         inherit: false,
         rules: [
-            { token: "master-entry", foreground: "cc00ff", fontStyle: "bold"},
-            { token: "entry", foreground: "ff5050", fontStyle: "bold" },
+            { token: "master-entry", foreground: "cc00ff", fontStyle: "bold italic underline"},
+            { token: "entry", foreground: "ff5050", fontStyle: "underline" },
             { token: "comment", foreground: "339933" },
             { token: "keyword", foreground: "0000cc", fontStyle: "bold" },
             { token: "register", foreground: "0033cc" },
@@ -55,12 +70,6 @@ function setupNxDmntAsm()
                 endColumn: word.endColumn,
             };
             var suggestions = [
-                {
-                    label: "simpleText",
-                    kind: monaco.languages.CompletionItemKind.Text,
-                    insertText: "simpleText",
-                    range: range,
-                },
                 {
                     label: "loop-endloop",
                     kind: monaco.languages.CompletionItemKind.Snippet,
@@ -91,21 +100,72 @@ function setupNxDmntAsm()
                     documentation: "If-Else-Endif Statement",
                     range: range,
                 },
+                {
+                    label: "if-key-else-endif",
+                    kind: monaco.languages.CompletionItemKind.Snippet,
+                    insertText: [
+                        "if key ${1:KEY1|...}",
+                        "\t$0",
+                        "else",
+                        "\t",
+                        "endif",
+                    ].join("\n"),
+                    insertTextRules:
+                        monaco.languages.CompletionItemInsertTextRule
+                            .InsertAsSnippet,
+                    documentation: "If-Key-Else-Endif Statement",
+                    range: range,
+                },
             ];
             return { suggestions: suggestions };
         },
     });
 
     editor_left = monaco.editor.create(document.getElementById("left-ce"), {
-        theme: "myCoolTheme",
+        theme: "NxDmntAsmDefaultTheme",
         value: "",
         language: "nx-dmnt-asm",
+        automaticLayout: true,
     });
 
     editor_right = monaco.editor.create(document.getElementById("right-ce"), {
-        theme: "myCoolTheme",
+        theme: "NxDmntAsmDefaultTheme",
         value: "",
         language: "nx-dmnt-asm",
+        automaticLayout: true,
+    });
+
+    editor_left.addAction({
+        id: "ctrl-s-to-save",
+        label: "Save File",
+        keybindings: [
+            monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS
+        ],
+        precondition: null,
+        keybindingContext: null,
+        contextMenuGroupId: "navigation",
+        contextMenuOrder: 1.5,
+        // Method that will be executed when the action is triggered.
+        // @param editor The editor instance is passed in as a convenience
+        run: function (ed) {
+            downloadTextToFile(ed.getValue(), "NxDmntAsm.txt")
+        },
+    });
+    editor_right.addAction({
+        id: "ctrl-s-to-save",
+        label: "Save File",
+        keybindings: [
+            monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS
+        ],
+        precondition: null,
+        keybindingContext: null,
+        contextMenuGroupId: "navigation",
+        contextMenuOrder: 1.5,
+        // Method that will be executed when the action is triggered.
+        // @param editor The editor instance is passed in as a convenience
+        run: function (ed) {
+            downloadTextToFile(ed.getValue(), "NxDmntAsm.asm")
+        },
     });
 }
 
@@ -184,13 +244,13 @@ function setupAutoAsm() {
             .then((data) => {
                 editor_right.setValue(data.dism);
                 localStorage.setItem('right_code', data.dism);
+                var errmsg = '';
                 if (data.errors.length > 0) {
-                    var errmsg = '';
                     for (var i = 0; i < data.errors.length; i++) {
                         errmsg += data.errors[i] + '\n';
                     }
-                    setLog(errmsg);
                 }
+                setLog(errmsg);
             })
             .catch((error) => console.error(error));
     }
@@ -209,15 +269,15 @@ function setupAutoAsm() {
         })
             .then((response) => response.json())
             .then((data) => {
-                editor_left.value = data.asm;
+                editor_left.setValue(data.asm);
                 localStorage.setItem('left_code', data.asm);
+                var errmsg = '';
                 if (data.errors.length > 0) {
-                    var errmsg = '';
                     for (var i = 0; i < data.errors.length; i++) {
                         errmsg += data.errors[i] + '\n';
                     }
-                    setLog(errmsg);
                 }
+                setLog(errmsg);
             })
             .catch((error) => console.error(error));
     }
@@ -266,206 +326,76 @@ window.addEventListener('DOMContentLoaded', ()=>{
     }
     editor_left.setValue(localStorage.getItem('left_code'));
     editor_right.setValue(localStorage.getItem('right_code'));
-    document.getElementById("bottom-log").value = localStorage.getItem("log");
+    // document.getElementById("bottom-log").value = localStorage.getItem("log");
 
-    if (editor_left.getValue().length == 0) {
+    if (editor_left.getValue().length == 0 && editor_right.getValue().length == 0) {
         editor_left.setValue(getExampleCode());
     }
 });
 
 
 function getExampleCode() {
-    return `{Diablo II Resurrected Version 1.0.0.2 TID 0100726014352000 BID 7E78CC35BAF51EA2}
-
-[60 FPS]
-04000000 0412A204 00000001
-
-[Default 30 FPS]
-04000000 0412A204 00000002
-[By Hazerou]
-
-[Upgrade Points 30]
-580E0000 029D5688
-580E1000 00000168
-580E1000 00000088
-30550000 00000002
-989FE030
-580F1000 00000080
-780F0000 00000024
-30000000 00000010
-9811F100 00000000 00000004
-54011000 00000000
-C0451400 00040000
-640F0000 00000000 0000001E
-94900100 00000001
+return `[Moon Jump]
+80000002
+580F0000 05C3FA50
+580F1000 00000260
+580F1000 00000058
+580F1000 00000110
+580F1000 00000050
+780F0000 0000002C
+640F0000 00000000 C3500000
 20000000
-780F0000 00000008
-31000000
-780E1000 00000050
-31550000
 
-[Skill Points 30]
-580E0000 029D5688
-580E1000 00000168
-580E1000 00000088
-30550000 00000002
-989FE030
-580F1000 00000080
-780F0000 00000024
-30000000 00000010
-9811F100 00000000 00000004
-54011000 00000000
-C0451400 00050000
-640F0000 00000000 0000001E
-94900100 00000001
-20000000
-780F0000 00000008
-31000000
-780E1000 00000050
-31550000
+[Inf HP]
+580F0000 05C3FA50
+580F1000 00000260
+580F1000 00000058
+780F0000 00000160
+640F0000 00000000 00000050
 
-[Money 65000]
-580E0000 029D5688
-580E1000 00000168
-580E1000 00000088
-30550000 00000002
-989FE030
-580F1000 00000080
-780F0000 00000024
-30000000 00000010
-9811F100 00000000 00000004
-54011000 00000000
-C0451400 000E0000
-640F0000 00000000 0000E8FD
-94900100 00000001
-20000000
-780F0000 00000008
-31000000
-780E1000 00000050
-31550000
-[Monsey is Capped to Level]
+[Invincible]
+580F0000 05C3FA50
+580F1000 00000260
+580F1000 00000058
+780F0000 00000250
+680F0000 50000000 50000000
 
-[Money 500,000]
-580E0000 029D5688
-580E1000 00000168
-580E1000 00000088
-30550000 00000002
-989FE030
-580F1000 00000080
-780F0000 00000024
-30000000 00000010
-9811F100 00000000 00000004
-54011000 00000000
-C0451400 000E0000
-640F0000 00000000 0007A120
-94900100 00000001
-20000000
-780F0000 00000008
-31000000
-780E1000 00000050
-31550000
-[Monsey is Capped to Level]
 
-[Money 1,500,000]
-580E0000 029D5688
-580E1000 00000168
-580E1000 00000088
-30550000 00000002
-989FE030
-580F1000 00000080
-780F0000 00000024
-30000000 00000010
-9811F100 00000000 00000004
-54011000 00000000
-C0451400 000E0000
-640F0000 00000000 0016E360
-94900100 00000001
+[Inf Ammo]
+580F0000 05C3FA50
+580F1000 00000260
+580F1000 00000058
+580F1000 00000390
+780F1000 000005E0
+300E0000 0000000B
+640F0000 00000000 000003E8
+780F0000 000000E0
+310E0000
 20000000
-780F0000 00000008
-31000000
-780E1000 00000050
-31550000
-[Monsey is Capped to Level]
 
-[200,000 XP]
-580E0000 029D5688
-580E1000 00000168
-580E1000 00000088
-30550000 00000002
-989FE030
-580F1000 00000080
-780F0000 00000024
-30000000 00000010
-9811F100 00000000 00000004
-54011000 00000000
-C0451400 000D0000
-640F0000 00000000 00030D40
-94900100 00000001
-20000000
-780F0000 00000008
-31000000
-780E1000 00000050
-31550000
 
-[500,000 XP]
-580E0000 029D5688
-580E1000 00000168
-580E1000 00000088
-30550000 00000002
-989FE030
-580F1000 00000080
-780F0000 00000024
-30000000 00000010
-9811F100 00000000 00000004
-54011000 00000000
-C0451400 000D0000
-640F0000 00000000 0007A120
-94900100 00000001
+[MAX Ammo]
+580F0000 05C3FA50
+580F1000 00000260
+580F1000 00000058
+580F1000 00000390
+780F1000 0000056C
+300E0000 0000000B
+640F0000 00000000 000003E8
+780F0000 000000E0
+310E0000
 20000000
-780F0000 00000008
-31000000
-780E1000 00000050
-31550000
 
-[10,000,000 XP]
-580E0000 029D5688
-580E1000 00000168
-580E1000 00000088
-30550000 00000002
-989FE030
-580F1000 00000080
-780F0000 00000024
-30000000 00000010
-9811F100 00000000 00000004
-54011000 00000000
-C0451400 000D0000
-640F0000 00000000 00989680
-94900100 00000001
+[Weapon ATK]
+580F0000 05C3FA50
+580F1000 00000260
+580F1000 00000058
+580F1000 00000390
+780F1000 0000055C
+300E0000 0000000B
+640F0000 00000000 461C3C00
+780F0000 000000E0
+310E0000
 20000000
-780F0000 00000008
-31000000
-780E1000 00000050
-31550000
-
-[50,000,000 XP]
-580E0000 029D5688
-580E1000 00000168
-580E1000 00000088
-30550000 00000002
-989FE030
-580F1000 00000080
-780F0000 00000024
-30000000 00000010
-9811F100 00000000 00000004
-54011000 00000000
-C0451400 000D0000
-640F0000 00000000 02FAF080
-94900100 00000001
-20000000
-780F0000 00000008
-31000000
-780E1000 00000050
-31550000
-[Credits To TomSwitch]
 `;
 }

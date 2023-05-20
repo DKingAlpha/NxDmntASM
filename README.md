@@ -2,54 +2,17 @@
 
 Dead Simple Assembler/Disassembler for Atmosphere dmnt Cheat VM.
 
-## Online Demo
+## [Online Demo](https://nx.tot.im/)
 
-[nx.tot.im](https://nx.tot.im/)
 
-## ASM Syntax TLDR
-
-Feel the vibe in following example, and begin write your own code on the fly.
-
-I believe you can totally get it.
+## Start Local Server
+```bash
+pip3 install flask
+python3 server/app.py
+```
 
 ## Example
-
-```lua
-[(ZR) Increase Sharon's Level +1 (AMS only)]
-u32 r12 = [heap + 0x2327c952]
-if u32 r12 < 0x63
-    if key ZR
-        u32 r12 += 0x1
-        u32 [heap + 0x2327c952] = r12
-    endif
-endif
-
-[Increase Day (L+Up)]
-if key L|UP
-    if u32 [heap + 0x2dd871ec] < 0x1e
-        u32 r15 = [heap + 0x2dd871ec]
-        u32 r15 += 0x1
-        u32 [heap + 0x2dd871ec] = r15
-    endif
-endif
-
-[  2.2.1.メイン/Main]
-if key ZR
-    u64 r15 = [main + 0x5ed9e98]
-    u64 r15 = [r15 + 0xb8]
-    u64 r15 = [r15 + 0x60]
-    u64 r15 = [r15 + 0x20]
-    u64 r15 += 0x20
-    loop r14 to 16
-        u32 [r15++] = 0x7fdf06ff
-        u16 [r15++] = 0xf9ff
-        u8 [r15++] = 0xff
-        u64 r15 += 0x1
-        u64 [r15++] = 0xffffffffffffffff
-    endloop r14
-endif
-
-```
+![example](github/screenshot.bmp)
 
 
 ## Cheat VM

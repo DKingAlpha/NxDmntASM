@@ -42,7 +42,7 @@ def dmnt_asm():
         errors.append(msg)
     p = CheatParser(err_handler)
     all_ok = p.load(text)
-    asm = p.asm(indent=4)
+    asm = p.asm(indent=0)
     return jsonify({
         'success': all_ok,
         'asm': asm,

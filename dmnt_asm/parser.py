@@ -14,7 +14,7 @@ class CheatParser:
         if not append:
             self.entries.clear()
         # group by entry name
-        cur_entry_name = None
+        cur_entry_name = ''
         cur_entry_block = []
         lines = content.splitlines()
         for line_number in range(0, len(lines)):
@@ -92,5 +92,5 @@ class CheatParser:
                     inst = code_handler(code)
                     entry_block[code_no] = inst
                 except Exception as e:
-                    self.err_handler(f"line #{line_no}, entry {entry_name}: failed to handle {orig_code}: {e}")
+                    self.err_handler(f"line #{line_no}, entry {entry_name}: failed to handle `{code}`: {e}")
                     all_ok = False

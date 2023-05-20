@@ -255,7 +255,7 @@ def vm_inst_asm(raw_line: str) -> vm_inst:
         op1 = match.group(1)
         cond = match.group(2)
         op2 = match.group(3)
-        if cond not in ['=', '!=', '>', '<', '>=', '<=']:
+        if cond not in ['==', '!=', '>', '<', '>=', '<=']:
             raise SyntaxError(f'illegal condition {cond} if statement')
         cond = InstCondition(cond)
         if op1[0] == '[' and op1[-1] == ']':
@@ -551,11 +551,13 @@ def _vm_inst_asm_rw(dtype: str, asm_line: str) -> vm_inst:
         if rN < 0:
             raise SyntaxError(f'invalid register {op1}')
         base, offset, regs = _get_base_offset_regs_from_bracket(op2)
-        if len(regs):
-            raise SyntaxError(f'registers not allowed in {op2}')
+        if len(regs) and base is not None:
+            raise SyntaxError('either `{dtype} rN = [base {+offset}]` or {dtype} rN = [rN {+offset}] is supported')
         if base is not None:
             return vm_load().build(rN, offset, False, base, dtype)
         else:
+            if len(regs) != 1 or regs[0][1] == True or regs[0][0] != rN:
+                raise SyntaxError('only support {dtype} rN = [rN {+offset}]')
             return vm_load().build(rN, offset, True, 0, dtype)
     else:
         raise SyntaxError(f'invalid statement')

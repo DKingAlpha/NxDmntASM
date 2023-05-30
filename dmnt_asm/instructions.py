@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-#-*- coding:utf-8 -*-
+# -*- coding:utf-8 -*-
 
 from __future__ import annotations
 import re
@@ -13,17 +13,19 @@ from .constants import *
 
 STRICT_MODE = False
 
+
 class _Properties(OrderedDict):
     """dot.notation access to dictionary attributes"""
     __getattr__ = OrderedDict.get
     __setattr__ = OrderedDict.__setitem__
     __delattr__ = OrderedDict.__delitem__
 
+
 def _int_from_hex(hexstr: str) -> int:
     return int(hexstr, 16)
 
 
-def reinterpret_cast_to_int(value: str|int|float, width: InstDataType) -> int:
+def reinterpret_cast_to_int(value: str | int | float, width: InstDataType) -> int:
     if width == InstDataType.float:
         if '.' not in value:
             value = int(value, 0)
@@ -55,7 +57,7 @@ def reinterpret_cast_to_int(value: str|int|float, width: InstDataType) -> int:
             return struct.unpack('>Q', struct.pack('>Q', hexint))[0]
 
 
-def _aob_match(code_type: int|str, mc: str) -> bool:
+def _aob_match(code_type: int | str, mc: str) -> bool:
     if isinstance(code_type, int):
         code_type = hex(code_type).lower()[2:]
     if len(code_type) > len(mc):
@@ -72,6 +74,7 @@ def _aob_match(code_type: int|str, mc: str) -> bool:
         if c1 != c2:
             return False
     return True
+
 
 class vm_inst(ABC):
     def __init__(self) -> None:
@@ -91,7 +94,7 @@ class vm_inst(ABC):
     @abstractmethod
     def asm(self) -> str:
         pass
-    
+
     def _asm(self) -> str:
         raw = list(self._gen_shortes_format())
         for k in self.prop:
@@ -103,7 +106,7 @@ class vm_inst(ABC):
                 if 'T' in self.prop and InstDataType_to_int(self.prop.T) == 8:
                     real_width = 16
             raw[pos:pos+real_width] = list(f'{k_value:0{real_width}X}')
-        
+
         # normalize
         self.raw = ''.join(raw)
         self.code = self._normalize_mc(self.raw)
@@ -111,7 +114,7 @@ class vm_inst(ABC):
         return self.code
 
     def _load_format(self) -> None:
-        format = self._gen_shortes_format() # it extends automatically
+        format = self._gen_shortes_format()  # it extends automatically
         self.format_info = {}
         for k in self.binding:
             # start_pos, [widths]
@@ -139,7 +142,7 @@ class vm_inst(ABC):
                     real_width = 16
             if start_pos + real_width > len(code):
                 return False
-            k_value = _int_from_hex(code[start_pos : start_pos + real_width])
+            k_value = _int_from_hex(code[start_pos: start_pos + real_width])
             self.prop[k] = self.binding[k][1](k_value)
         return True
 
@@ -173,6 +176,7 @@ class vm_inst(ABC):
     def __str__(self) -> str:
         return f'{self.asm()} ; {self.dism()}'
 
+
 def vm_inst_dism(mc_line: str) -> vm_inst:
     lower_line = mc_line.strip().lower()
     # dirty check for nop
@@ -185,13 +189,13 @@ def vm_inst_dism(mc_line: str) -> vm_inst:
         if i.startswith('vm_') and (not i.startswith('vm_inst')) and isinstance(vm_cls, type):
             assert 'CODE_TYPE' in dir(vm_cls)
             if _aob_match(vm_cls.CODE_TYPE, lower_line):
-                ins: vm_inst  = vm_cls()
+                ins: vm_inst = vm_cls()
                 if ins.dism_mc_line_to_prop(mc_line):
                     return ins
     raise SyntaxError(f'invalid instruction: {mc_line}')
 
 
-def _get_bracket_elems(s: str, merge_offset: bool = True) -> list[int|InstMemBase|tuple[int,bool]]:
+def _get_bracket_elems(s: str, merge_offset: bool = True) -> list[int | InstMemBase | tuple[int, bool]]:
     """
     Returns:
         list[object]: list of elements in the bracket.
@@ -221,7 +225,8 @@ def _get_bracket_elems(s: str, merge_offset: bool = True) -> list[int|InstMemBas
     for p in parts:
         if p.startswith('r'):
             self_inc = p.endswith('++')
-            p = p.rstrip('+')   # we have done the check above, so it's safe to blind rstrip '+
+            # we have done the check above, so it's safe to blind rstrip '+
+            p = p.rstrip('+')
             reg_num = get_reg_num(p)
             if reg_num < 0:
                 raise SyntaxError(f'illegal register r{p}')
@@ -240,8 +245,10 @@ def _get_bracket_elems(s: str, merge_offset: bool = True) -> list[int|InstMemBas
         result.append(offset)
     return result
 
-### helper
-def _get_base_offset_regs_from_bracket(s: str) -> list[InstMemBase|None, int, list[tuple[int, bool]]]:
+# helper
+
+
+def _get_base_offset_regs_from_bracket(s: str) -> list[InstMemBase | None, int, list[tuple[int, bool]]]:
     elems = _get_bracket_elems(s)
     base = None
     offset = 0
@@ -256,6 +263,7 @@ def _get_base_offset_regs_from_bracket(s: str) -> list[InstMemBase|None, int, li
         elif isinstance(elem, tuple):
             regs.append(elem)
     return (base, offset, regs)
+
 
 def vm_inst_asm(raw_line: str) -> vm_inst:
     # fast check for nested expression
@@ -300,7 +308,8 @@ def vm_inst_asm(raw_line: str) -> vm_inst:
             if base is None:
                 raise SyntaxError(f'missing mem base here')
             if len(regs):
-                raise SyntaxError(f'regs are not supported as left operand in if statement')
+                raise SyntaxError(
+                    f'regs are not supported as left operand in if statement')
             return vm_if_off_COND_imm().build(offset, cond, value, base, dtype)
         elif op2[0] == '[' and op2[-1] == ']':
             rN = get_reg_num(op1)
@@ -309,7 +318,8 @@ def vm_inst_asm(raw_line: str) -> vm_inst:
             base, offset, regs = _get_base_offset_regs_from_bracket(op2)
             for reg in regs:
                 if reg[1]:
-                    raise SyntaxError(f'r{reg[0]}++ is not supported in if statement')
+                    raise SyntaxError(
+                        f'r{reg[0]}++ is not supported in if statement')
             regs = [reg[0] for reg in regs]
             if base is not None:
                 if len(regs) >= 2:
@@ -368,7 +378,8 @@ def vm_inst_asm(raw_line: str) -> vm_inst:
             raise SyntaxError('invalid endloop statement')
         reg = get_reg_num(parts[1])
         if reg < 0:
-            raise SyntaxError(f'illegal register {parts(1)} in endloop statement')
+            raise SyntaxError(
+                f'illegal register {parts(1)} in endloop statement')
         return vm_endloop().build(reg)
     elif parts[0] == 'log':
         match = re.match(r'^log\s+(\d+)\s+(.*)$', asm_line)
@@ -378,12 +389,14 @@ def vm_inst_asm(raw_line: str) -> vm_inst:
         base, offset, regs = _get_base_offset_regs_from_bracket(match.group(2))
         for reg in regs:
             if reg[1]:
-                raise SyntaxError(f'r{reg[0]}++ is not supported in if statement')
+                raise SyntaxError(
+                    f'r{reg[0]}++ is not supported in if statement')
         regs = [reg[0] for reg in regs]
         if base is not None:
             if regs:
                 if len(regs) >= 2:
-                    raise SyntaxError(f'too many regs {regs} in mem-based log statement.')
+                    raise SyntaxError(
+                        f'too many regs {regs} in mem-based log statement.')
                 if offset:
                     raise SyntaxError(f'offset unsupported here')
                 return vm_log_offreg().build(logid, regs[0], base, dtype)
@@ -400,7 +413,8 @@ def vm_inst_asm(raw_line: str) -> vm_inst:
                     raise SyntaxError(f'offset unsupported here')
                 return vm_log_reg_offreg().build(logid, regs[0], regs[1], dtype)
             else:
-                raise SyntaxError(f'too many regs {regs} in reg-based log statement.')
+                raise SyntaxError(
+                    f'too many regs {regs} in reg-based log statement.')
         else:
             raise SyntaxError('invalid log statement')
     elif 'static' in asm_line:
@@ -480,7 +494,8 @@ def _vm_inst_asm_rw(dtype: str, asm_line: str) -> vm_inst:
 
     # {dtype} rD = rS OP value
     # {dtype} rD = rS OP rs
-    match = re.match(r'^r(\d+)\s*=\s*r(\d+)\s*([\+\-\*<>&|^]{1,2})\s*(.+)$', asm_line)
+    match = re.match(
+        r'^r(\d+)\s*=\s*r(\d+)\s*([\+\-\*<>&|^]{1,2})\s*(.+)$', asm_line)
     if match:
         op = match.group(3)
         if op not in ['+', '-', '*', '<<', '>>', '&', '|', '^']:
@@ -522,7 +537,7 @@ def _vm_inst_asm_rw(dtype: str, asm_line: str) -> vm_inst:
             # well could be and [...] expression. dont raise error here
             pass
 
-    ### the worst part comes
+    # the worst part comes
     op1, op2 = asm_line.replace(' ', '').split('=')
     op1 = op1.strip()
     op2 = op2.strip()
@@ -572,7 +587,8 @@ def _vm_inst_asm_rw(dtype: str, asm_line: str) -> vm_inst:
                 if len(regs) > 1 and regs[1][1] == True:
                     raise SyntaxError(f'r{regs[1]}++ is not supported here')
                 if offset and len(regs) == 2:
-                    raise SyntaxError(f'offset {offset} and offreg r{regs[1][0]} can not exist at the same time')
+                    raise SyntaxError(
+                        f'offset {offset} and offreg r{regs[1][0]} can not exist at the same time')
                 if len(regs) == 2:
                     return vm_store_reg().build(InstOffsetType.OFF_REG, regs[0][0], regs[0][1], regs[1][0], rS, dtype)
                 else:
@@ -586,7 +602,8 @@ def _vm_inst_asm_rw(dtype: str, asm_line: str) -> vm_inst:
             raise SyntaxError(f'invalid register {op1}')
         base, offset, regs = _get_base_offset_regs_from_bracket(op2)
         if len(regs) and base is not None:
-            raise SyntaxError('either `{dtype} rN = [base {+offset}]` or {dtype} rN = [rN {+offset}] is supported')
+            raise SyntaxError(
+                'either `{dtype} rN = [base {+offset}]` or {dtype} rN = [rN {+offset}] is supported')
         if base is not None:
             return vm_load().build(rN, offset, False, base, dtype)
         else:
@@ -595,6 +612,7 @@ def _vm_inst_asm_rw(dtype: str, asm_line: str) -> vm_inst:
             return vm_load().build(rN, offset, True, 0, dtype)
     else:
         raise SyntaxError(f'invalid statement')
+
 
 class vm_nop(vm_inst):
     """
@@ -643,21 +661,21 @@ class vm_store_imm(vm_inst):
         self.format = '0TMR00AA AAAAAAAA VVVVVVVV (VVVVVVVV)'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            T = ('width', InstDataType, InstDataType_to_int),
-            M = ('base', InstMemBase, int),
-            R = ('offreg', int, int),
-            A = ('offset', int, int),
-            V = ('value', int, int),
+            T=('width', InstDataType, InstDataType_to_int),
+            M=('base', InstMemBase, int),
+            R=('offreg', int, int),
+            A=('offset', int, int),
+            V=('value', int, int),
         )
         self._load_format()
 
     def build(self,
-            offset: int,    # uint40
-            value: str|int|float,     # <= uintmax_of(width)
-            offreg = 0,
-            base = InstMemBase.MAIN,
-            width = InstDataType.u32,
-        ) -> vm_store_imm:
+              offset: int,    # uint40
+              value: str | int | float,     # <= uintmax_of(width)
+              offreg=0,
+              base=InstMemBase.MAIN,
+              width=InstDataType.u32,
+              ) -> vm_store_imm:
         # fix arguments
         if not width:
             width = InstDataType.u32
@@ -671,9 +689,9 @@ class vm_store_imm(vm_inst):
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
-            self.binding[sym][1](   # run decoder on input value
-                local_vars[self.binding[sym][0]]
-            ) for sym in self.binding})
+                                 self.binding[sym][1](   # run decoder on input value
+                                     local_vars[self.binding[sym][0]]
+                                 ) for sym in self.binding})
         return self
 
     def asm(self) -> str:
@@ -723,21 +741,21 @@ class vm_if_off_COND_imm(vm_inst):
         self.format = '1TMC00AA AAAAAAAA VVVVVVVV (VVVVVVVV)'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            T = ('width', InstDataType, InstDataType_to_int),
-            M = ('base', InstMemBase, int),
-            C = ('cond', InstCondition, int),
-            A = ('offset', int, int),
-            V = ('value', int, int),
+            T=('width', InstDataType, InstDataType_to_int),
+            M=('base', InstMemBase, int),
+            C=('cond', InstCondition, int),
+            A=('offset', int, int),
+            V=('value', int, int),
         )
         self._load_format()
 
     def build(self,
-            offset: int,    # uint40
-            cond: InstCondition,
-            value: str|int|float,     # <= uintmax_of(width)
-            base = InstMemBase.MAIN,
-            width = InstDataType.u32,
-        ) -> vm_if_off_COND_imm:
+              offset: int,    # uint40
+              cond: InstCondition,
+              value: str | int | float,     # <= uintmax_of(width)
+              base=InstMemBase.MAIN,
+              width=InstDataType.u32,
+              ) -> vm_if_off_COND_imm:
         # fix arguments
         if not width:
             width = InstDataType.u32
@@ -749,14 +767,14 @@ class vm_if_off_COND_imm(vm_inst):
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
-            self.binding[sym][1](   # run decoder on input value
-                local_vars[self.binding[sym][0]]
-            ) for sym in self.binding})
+                                 self.binding[sym][1](   # run decoder on input value
+                                     local_vars[self.binding[sym][0]]
+                                 ) for sym in self.binding})
         return self
-    
+
     def asm(self) -> str:
         return super()._asm()
-    
+
     def dism(self) -> str:
         p = self.prop
         return f'if {p.T} [{p.M.name.lower()} + {p.A:#x}] {p.C} {int_to_dtype_hexstr(p.V, str(p.T), True)}'
@@ -782,10 +800,10 @@ class vm_endif(vm_inst):
 
     def build(self) -> vm_endif:
         return self
-    
+
     def asm(self) -> str:
         return '20000000'
-    
+
     def dism(self) -> str:
         return self.CODE_NAME
 
@@ -838,15 +856,15 @@ class vm_loop(vm_inst):
         self.format = '300R0000 VVVVVVVV'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            R = ('reg', int, int),
-            V = ('count', int, int),
+            R=('reg', int, int),
+            V=('count', int, int),
         )
         self._load_format()
 
     def build(self,
-            reg: int,
-            count: int,
-        ) -> vm_loop:
+              reg: int,
+              count: int,
+              ) -> vm_loop:
         # verify args
         if (reg >= 16):
             raise ValueError(f'reg {reg} out of range')
@@ -855,9 +873,9 @@ class vm_loop(vm_inst):
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
-            self.binding[sym][1](   # run decoder on input value
-                local_vars[self.binding[sym][0]]
-            ) for sym in self.binding})
+                                 self.binding[sym][1](   # run decoder on input value
+                                     local_vars[self.binding[sym][0]]
+                                 ) for sym in self.binding})
         return self
 
     def asm(self) -> str:
@@ -880,22 +898,22 @@ class vm_endloop(vm_inst):
         self.format = '310R0000'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            R = ('reg', int, int),
+            R=('reg', int, int),
         )
         self._load_format()
 
     def build(self,
-            reg: int
-        ) -> vm_endloop:
+              reg: int
+              ) -> vm_endloop:
         # verify args
         if reg >= 16 or reg < 0:
             raise ValueError(f'reg {reg} out of range')
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
-            self.binding[sym][1](   # run decoder on input value
-                local_vars[self.binding[sym][0]]
-            ) for sym in self.binding})
+                                 self.binding[sym][1](   # run decoder on input value
+                                     local_vars[self.binding[sym][0]]
+                                 ) for sym in self.binding})
         return self
 
     def asm(self) -> str:
@@ -927,16 +945,16 @@ class vm_move_reg(vm_inst):
         self.format = '400R0000 VVVVVVVV VVVVVVVV'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            R = ('reg', int, int),
-            V = ('value', int, int),
+            R=('reg', int, int),
+            V=('value', int, int),
         )
         self._load_format()
 
     def build(self,
-            reg: int,
-            value: str|int|float,
-            width = InstDataType.u64,
-        ) -> vm_move_reg:
+              reg: int,
+              value: str | int | float,
+              width=InstDataType.u64,
+              ) -> vm_move_reg:
         # fix arguments
         if not width:
             width = InstDataType.u64
@@ -948,9 +966,9 @@ class vm_move_reg(vm_inst):
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
-            self.binding[sym][1](   # run decoder on input value
-                local_vars[self.binding[sym][0]]
-            ) for sym in self.binding})
+                                 self.binding[sym][1](   # run decoder on input value
+                                     local_vars[self.binding[sym][0]]
+                                 ) for sym in self.binding})
         return self
 
     def asm(self) -> str:
@@ -958,7 +976,7 @@ class vm_move_reg(vm_inst):
 
     def dism(self) -> str:
         return f'r{self.prop.R} = {self.prop.V:#x}'
-    
+
 
 class vm_load(vm_inst):
     """
@@ -994,21 +1012,21 @@ class vm_load(vm_inst):
         self.format = '5TMRS0AA AAAAAAAA'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            T = ('width', InstDataType, InstDataType_to_int),
-            M = ('base', InstMemBase, int),
-            R = ('reg', int, int),
-            A = ('offset', int, int),
-            S = ('self_deref', bool, int),
+            T=('width', InstDataType, InstDataType_to_int),
+            M=('base', InstMemBase, int),
+            R=('reg', int, int),
+            A=('offset', int, int),
+            S=('self_deref', bool, int),
         )
         self._load_format()
 
     def build(self,
-            reg: int,
-            offset: int,    # uint40
-            self_deref: bool,
-            base = InstMemBase.MAIN,
-            width = InstDataType.u32,
-        ) -> vm_load:
+              reg: int,
+              offset: int,    # uint40
+              self_deref: bool,
+              base=InstMemBase.MAIN,
+              width=InstDataType.u32,
+              ) -> vm_load:
         # verify args
         if (reg >= 16):
             raise ValueError(f'reg {reg} out of range')
@@ -1019,14 +1037,15 @@ class vm_load(vm_inst):
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
-            self.binding[sym][1](   # run decoder on input value
-                local_vars[self.binding[sym][0]]
-            ) for sym in self.binding})
+                                 self.binding[sym][1](   # run decoder on input value
+                                     local_vars[self.binding[sym][0]]
+                                 ) for sym in self.binding})
         return self
 
     def asm(self) -> str:
         if self.prop.S:
-            self.prop.M = InstMemBase(0)    # manually set 0 to comply with format
+            # manually set 0 to comply with format
+            self.prop.M = InstMemBase(0)
         return super()._asm()
 
     def dism(self) -> str:
@@ -1047,7 +1066,7 @@ class vm_store_reg_imm(vm_inst):
             i32 [r0++ + r1] = 0x12345678
             i32 [r0 + r1] = 0x12345678
             i32 [r0++] = 0x12345678
-            
+
     ### Code Type 0x6: Store Static Value to Register Memory Address
     Code type 0x6 allows writing a fixed value to a memory address specified by a register.
 
@@ -1069,23 +1088,23 @@ class vm_store_reg_imm(vm_inst):
         self.format = '6T0RIor0 VVVVVVVV VVVVVVVV'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            T = ('width', InstDataType, InstDataType_to_int),
-            R = ('basereg', int, int),
-            I = ('basereg_inc', bool, int),
-            o = ('off_by_reg', bool, int),
-            r = ('offreg', int, int),
-            V = ('value', int, int),
+            T=('width', InstDataType, InstDataType_to_int),
+            R=('basereg', int, int),
+            I=('basereg_inc', bool, int),
+            o=('off_by_reg', bool, int),
+            r=('offreg', int, int),
+            V=('value', int, int),
         )
         self._load_format()
 
     def build(self,
-            basereg: int,
-            value: str|int|float,
-            basereg_inc: bool = False,
-            off_by_reg: bool = False,
-            offreg: int = 0,
-            width = InstDataType.u32,
-        ) -> vm_store_reg_imm:
+              basereg: int,
+              value: str | int | float,
+              basereg_inc: bool = False,
+              off_by_reg: bool = False,
+              offreg: int = 0,
+              width=InstDataType.u32,
+              ) -> vm_store_reg_imm:
         # fix arguments
         if not width:
             width = InstDataType.u32
@@ -1097,9 +1116,9 @@ class vm_store_reg_imm(vm_inst):
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
-            self.binding[sym][1](   # run decoder on input value
-                local_vars[self.binding[sym][0]]
-            ) for sym in self.binding})
+                                 self.binding[sym][1](   # run decoder on input value
+                                     local_vars[self.binding[sym][0]]
+                                 ) for sym in self.binding})
         return self
 
     def asm(self) -> str:
@@ -1123,7 +1142,7 @@ class vm_legacy_set_imm(vm_inst):
             OP is one of +, -, *, <<, >>
         example:
             r0 += 0x12345678
-    
+
     ### Code Type 0x7: Legacy Arithmetic
     Code type 0x7 allows performing arithmetic on registers.
 
@@ -1152,19 +1171,19 @@ class vm_legacy_set_imm(vm_inst):
         self.format = '7T0RC000 VVVVVVVV'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            T = ('width', InstDataType, InstDataType_to_int),
-            R = ('reg', int, int),
-            C = ('op', InstArithmetic, int),
-            V = ('value', int, int),
+            T=('width', InstDataType, InstDataType_to_int),
+            R=('reg', int, int),
+            C=('op', InstArithmetic, int),
+            V=('value', int, int),
         )
         self._load_format()
 
     def build(self,
-            reg: int,
-            op: InstArithmetic,
-            value: str|int|float,
-            width = InstDataType.u32,
-        ) -> vm_store_reg_imm:
+              reg: int,
+              op: InstArithmetic,
+              value: str | int | float,
+              width=InstDataType.u32,
+              ) -> vm_store_reg_imm:
         # fix arguments
         if not width:
             width = InstDataType.u32
@@ -1179,9 +1198,9 @@ class vm_legacy_set_imm(vm_inst):
         assert op <= InstArithmetic.RSHIFT, f'invalid legacy arithmetic type {op}'
         local_vars = locals()
         self.prop = _Properties({sym:
-            self.binding[sym][1](   # run decoder on input value
-                local_vars[self.binding[sym][0]]
-            ) for sym in self.binding})
+                                 self.binding[sym][1](   # run decoder on input value
+                                     local_vars[self.binding[sym][0]]
+                                 ) for sym in self.binding})
         return self
 
     def asm(self) -> str:
@@ -1215,9 +1234,10 @@ class vm_if_key(vm_inst):
         # setup
         self.format = '8kkkkkkk'
 
-        def key_decoder(keys: int | str | InstKeyName | list[int|str|InstKeyName]) -> InstKeyFlag:
+        def key_decoder(keys: int | str | InstKeyName | list[int | str | InstKeyName]) -> InstKeyFlag:
             keycomb = InstKeyFlag(0)
-            def _parse_key(key: int|str|InstKeyName):
+
+            def _parse_key(key: int | str | InstKeyName):
                 result = InstKeyFlag(0)
                 if isinstance(key, str):
                     if '|' in key:
@@ -1226,7 +1246,7 @@ class vm_if_key(vm_inst):
                     else:
                         result |= InstKeyName(key.strip()).value
                 elif isinstance(key, int):
-                    result |=  key
+                    result |= key
                 elif isinstance(key, InstKeyName):
                     result |= key.value
                 else:
@@ -1238,22 +1258,23 @@ class vm_if_key(vm_inst):
             else:
                 keycomb = _parse_key(keys)
             return keycomb
+
         def key_encoder(keycomb: InstKeyFlag):
             return keycomb.value
 
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            k = ('keys', key_decoder, key_encoder),
+            k=('keys', key_decoder, key_encoder),
         )
         self._load_format()
 
-    def build(self, keys : str|list[str|InstKeyName]) -> vm_if_off_COND_imm:
+    def build(self, keys: str | list[str | InstKeyName]) -> vm_if_off_COND_imm:
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
-            self.binding[sym][1](   # run decoder on input value
-                local_vars[self.binding[sym][0]]
-            ) for sym in self.binding})
+                                 self.binding[sym][1](   # run decoder on input value
+                                     local_vars[self.binding[sym][0]]
+                                 ) for sym in self.binding})
         return self
 
     def asm(self) -> str:
@@ -1293,21 +1314,21 @@ class vm_set_reg_reg(vm_inst):
         self.format = '9TCRS0s0'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            T = ('width', InstDataType, InstDataType_to_int),
-            C = ('op', InstArithmetic, int),
-            R = ('dest', int, int),
-            S = ('op1', int, int),
-            s = ('op2', int, int),
+            T=('width', InstDataType, InstDataType_to_int),
+            C=('op', InstArithmetic, int),
+            R=('dest', int, int),
+            S=('op1', int, int),
+            s=('op2', int, int),
         )
         self._load_format()
 
     def build(self,
-            dest: int,
-            op1: int,
-            op: InstArithmetic,
-            op2: int,
-            width = InstDataType.u32,
-        ) -> vm_store_reg_imm:
+              dest: int,
+              op1: int,
+              op: InstArithmetic,
+              op2: int,
+              width=InstDataType.u32,
+              ) -> vm_store_reg_imm:
         if dest >= 16 or dest < 0 or op1 >= 16 or op1 < 0 or op2 >= 16 or op2 < 0:
             raise ValueError(f'reg out of range')
         if not width:
@@ -1319,9 +1340,9 @@ class vm_set_reg_reg(vm_inst):
         for sym in ('dest', 'op1', 'op2'):
             assert local_vars[sym] < 16, f'invalid register {sym} {local_vars[sym]}'
         self.prop = _Properties({sym:
-            self.binding[sym][1](   # run decoder on input value
-                local_vars[self.binding[sym][0]]
-            ) for sym in self.binding})
+                                 self.binding[sym][1](   # run decoder on input value
+                                     local_vars[self.binding[sym][0]]
+                                 ) for sym in self.binding})
         return self
 
     def asm(self) -> str:
@@ -1362,21 +1383,21 @@ class vm_set_reg_imm(vm_inst):
         self.format = '9TCRS100 VVVVVVVV (VVVVVVVV)'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            T = ('width', InstDataType, InstDataType_to_int),
-            C = ('op', InstArithmetic, int),
-            R = ('dest', int, int),
-            S = ('src', int, int),
-            V = ('value', int, int),
+            T=('width', InstDataType, InstDataType_to_int),
+            C=('op', InstArithmetic, int),
+            R=('dest', int, int),
+            S=('src', int, int),
+            V=('value', int, int),
         )
         self._load_format()
 
     def build(self,
-            dest: int,
-            src: int,
-            op: InstArithmetic,
-            value: str|int|float,
-            width = InstDataType.u32,
-        ) -> vm_set_reg_imm:
+              dest: int,
+              src: int,
+              op: InstArithmetic,
+              value: str | int | float,
+              width=InstDataType.u32,
+              ) -> vm_set_reg_imm:
         # fix arguments
         if not width:
             width = InstDataType.u32
@@ -1395,9 +1416,9 @@ class vm_set_reg_imm(vm_inst):
         if (value >> self.format.count('V') * 4) != 0:
             raise ValueError(f'value {value} overflow')
         self.prop = _Properties({sym:
-            self.binding[sym][1](   # run decoder on input value
-                local_vars[self.binding[sym][0]]
-            ) for sym in self.binding})
+                                 self.binding[sym][1](   # run decoder on input value
+                                     local_vars[self.binding[sym][0]]
+                                 ) for sym in self.binding})
         return self
 
     def asm(self) -> str:
@@ -1455,25 +1476,25 @@ class vm_store_reg(vm_inst):
         self.format = 'ATSRIOxa (aaaaaaaa)'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            T = ('width', InstDataType, InstDataType_to_int),
-            S = ('srcreg', int, int),
-            R = ('basereg', int, int),
-            I = ('basereg_inc', bool, int),
-            O = ('offset_type', InstOffsetType, int),
-            x = ('offreg_or_membase', int, int),
-            a = ('offset', int, int),
+            T=('width', InstDataType, InstDataType_to_int),
+            S=('srcreg', int, int),
+            R=('basereg', int, int),
+            I=('basereg_inc', bool, int),
+            O=('offset_type', InstOffsetType, int),
+            x=('offreg_or_membase', int, int),
+            a=('offset', int, int),
         )
         self._load_format()
 
     def build(self,
-            offset_type: InstOffsetType,
-            basereg: int,
-            basereg_inc: bool,
-            offset: int,
-            offreg_or_membase: int | InstMemBase,
-            srcreg: int,
-            width = InstDataType.u32,
-        ) -> vm_store_reg:
+              offset_type: InstOffsetType,
+              basereg: int,
+              basereg_inc: bool,
+              offset: int,
+              offreg_or_membase: int | InstMemBase,
+              srcreg: int,
+              width=InstDataType.u32,
+              ) -> vm_store_reg:
         # verify args
         if srcreg >= 16 or basereg >= 16 or (int(offset_type) <= 1 and offreg_or_membase >= 16):
             raise ValueError(f'reg out of range')
@@ -1487,9 +1508,9 @@ class vm_store_reg(vm_inst):
             offreg_or_membase = InstMemBase(offreg_or_membase)
         local_vars = locals()
         self.prop = _Properties({sym:
-            self.binding[sym][1](   # run decoder on input value
-                local_vars[self.binding[sym][0]]
-            ) for sym in self.binding})
+                                 self.binding[sym][1](   # run decoder on input value
+                                     local_vars[self.binding[sym][0]]
+                                 ) for sym in self.binding})
         if int(self.prop.O) in [2, 4, 5]:
             self.format_info['a'] = (7, 9)  # fix special format
         return self
@@ -1580,21 +1601,21 @@ class vm_if_reg_COND_off(vm_inst):
         self.format = 'C0TcS0Ma aaaaaaaa'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            T = ('width', InstDataType, InstDataType_to_int),
-            c = ('cond', InstCondition, int),
-            S = ('reg', int, int),
-            M = ('base', InstMemBase, int),
-            a = ('offset', int, int),
+            T=('width', InstDataType, InstDataType_to_int),
+            c=('cond', InstCondition, int),
+            S=('reg', int, int),
+            M=('base', InstMemBase, int),
+            a=('offset', int, int),
         )
         self._load_format()
 
     def build(self,
-            reg: int,
-            cond: InstCondition,
-            offset: int,    # uint36
-            base = InstMemBase.MAIN,
-            width = InstDataType.u64,
-        ) -> vm_if_reg_COND_off:
+              reg: int,
+              cond: InstCondition,
+              offset: int,    # uint36
+              base=InstMemBase.MAIN,
+              width=InstDataType.u64,
+              ) -> vm_if_reg_COND_off:
         # verify args
         if (offset >> self.format.count('a') * 4) != 0:
             raise ValueError(f'offset {offset} larger than 40 bits')
@@ -1603,14 +1624,14 @@ class vm_if_reg_COND_off(vm_inst):
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
-            self.binding[sym][1](   # run decoder on input value
-                local_vars[self.binding[sym][0]]
-            ) for sym in self.binding})
+                                 self.binding[sym][1](   # run decoder on input value
+                                     local_vars[self.binding[sym][0]]
+                                 ) for sym in self.binding})
         return self
-    
+
     def asm(self) -> str:
         return super()._asm()
-    
+
     def dism(self) -> str:
         p = self.prop
         return f'if {p.T} r{p.S} {p.c} [{p.M.name.lower()}+{p.a:#x}]'
@@ -1624,28 +1645,28 @@ class vm_if_reg_COND_offreg(vm_inst):
             dtype default = u64
     """
     CODE_TYPE = 'C0???1'
-    
+
     def __init__(self) -> None:
         super().__init__()
         # setup
         self.format = 'C0TcS1Mr'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            T = ('width', InstDataType, InstDataType_to_int),
-            c = ('cond', InstCondition, int),
-            S = ('reg', int, int),
-            M = ('base', InstMemBase, int),
-            r = ('offreg', int, int),
+            T=('width', InstDataType, InstDataType_to_int),
+            c=('cond', InstCondition, int),
+            S=('reg', int, int),
+            M=('base', InstMemBase, int),
+            r=('offreg', int, int),
         )
         self._load_format()
 
     def build(self,
-            reg: int,
-            cond: InstCondition,
-            offreg: int,
-            base = InstMemBase.MAIN,
-            width = InstDataType.u64,
-        ) -> vm_if_reg_COND_offreg:
+              reg: int,
+              cond: InstCondition,
+              offreg: int,
+              base=InstMemBase.MAIN,
+              width=InstDataType.u64,
+              ) -> vm_if_reg_COND_offreg:
         # verify args
         if reg >= 16:
             raise ValueError(f'reg {reg} out of range')
@@ -1656,14 +1677,14 @@ class vm_if_reg_COND_offreg(vm_inst):
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
-            self.binding[sym][1](   # run decoder on input value
-                local_vars[self.binding[sym][0]]
-            ) for sym in self.binding})
+                                 self.binding[sym][1](   # run decoder on input value
+                                     local_vars[self.binding[sym][0]]
+                                 ) for sym in self.binding})
         return self
-    
+
     def asm(self) -> str:
         return super()._asm()
-    
+
     def dism(self) -> str:
         p = self.prop
         return f'if {p.T} r{p.S} {p.c} [{p.M.name.lower()}+r{p.r}]'
@@ -1688,21 +1709,21 @@ class vm_if_reg_COND_reg_off(vm_inst):
         self.format = 'C0TcS2Ra aaaaaaaa'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            T = ('width', InstDataType, InstDataType_to_int),
-            c = ('cond', InstCondition, int),
-            S = ('reg', int, int),
-            R = ('basereg', int, int),
-            a = ('offset', int, int),
+            T=('width', InstDataType, InstDataType_to_int),
+            c=('cond', InstCondition, int),
+            S=('reg', int, int),
+            R=('basereg', int, int),
+            a=('offset', int, int),
         )
         self._load_format()
 
     def build(self,
-            reg: int,
-            cond: InstCondition,
-            basereg: int,
-            offset: int,    # uint36
-            width = InstDataType.u64,
-        ) -> vm_if_reg_COND_reg_off:
+              reg: int,
+              cond: InstCondition,
+              basereg: int,
+              offset: int,    # uint36
+              width=InstDataType.u64,
+              ) -> vm_if_reg_COND_reg_off:
         # verify args
         if reg >= 16:
             raise ValueError(f'reg {reg} out of range')
@@ -1715,14 +1736,14 @@ class vm_if_reg_COND_reg_off(vm_inst):
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
-            self.binding[sym][1](   # run decoder on input value
-                local_vars[self.binding[sym][0]]
-            ) for sym in self.binding})
+                                 self.binding[sym][1](   # run decoder on input value
+                                     local_vars[self.binding[sym][0]]
+                                 ) for sym in self.binding})
         return self
-    
+
     def asm(self) -> str:
         return super()._asm()
-    
+
     def dism(self) -> str:
         p = self.prop
         return f'if {p.T} r{p.S} {p.c} [r{p.R}+{p.a:#x}]'
@@ -1736,28 +1757,28 @@ class vm_if_reg_COND_reg_reg(vm_inst):
             dtype default = u64
     """
     CODE_TYPE = 'C0???3'
-    
+
     def __init__(self) -> None:
         super().__init__()
         # setup
         self.format = 'C0TcS3Rr'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            T = ('width', InstDataType, InstDataType_to_int),
-            c = ('cond', InstCondition, int),
-            S = ('reg', int, int),
-            R = ('basereg', int, int),
-            r = ('offreg', int, int),
+            T=('width', InstDataType, InstDataType_to_int),
+            c=('cond', InstCondition, int),
+            S=('reg', int, int),
+            R=('basereg', int, int),
+            r=('offreg', int, int),
         )
         self._load_format()
 
     def build(self,
-            reg: int,
-            cond: InstCondition,
-            basereg: int,
-            offreg: int,
-            width = InstDataType.u64,
-        ) -> vm_if_reg_COND_reg_reg:
+              reg: int,
+              cond: InstCondition,
+              basereg: int,
+              offreg: int,
+              width=InstDataType.u64,
+              ) -> vm_if_reg_COND_reg_reg:
         # verify args
         if reg >= 16:
             raise ValueError(f'reg {reg} out of range')
@@ -1770,14 +1791,14 @@ class vm_if_reg_COND_reg_reg(vm_inst):
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
-            self.binding[sym][1](   # run decoder on input value
-                local_vars[self.binding[sym][0]]
-            ) for sym in self.binding})
+                                 self.binding[sym][1](   # run decoder on input value
+                                     local_vars[self.binding[sym][0]]
+                                 ) for sym in self.binding})
         return self
-    
+
     def asm(self) -> str:
         return super()._asm()
-    
+
     def dism(self) -> str:
         p = self.prop
         return f'if {p.T} r{p.S} {p.c} [r{p.R}+r{p.r}]'
@@ -1791,26 +1812,26 @@ class vm_if_reg_COND_imm(vm_inst):
             dtype default = u64
     """
     CODE_TYPE = 'C0???400'
-    
+
     def __init__(self) -> None:
         super().__init__()
         # setup
         self.format = 'C0TcS400 VVVVVVVV (VVVVVVVV)'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            T = ('width', InstDataType, InstDataType_to_int),
-            c = ('cond', InstCondition, int),
-            S = ('reg', int, int),
-            V = ('value', int, int),
+            T=('width', InstDataType, InstDataType_to_int),
+            c=('cond', InstCondition, int),
+            S=('reg', int, int),
+            V=('value', int, int),
         )
         self._load_format()
 
     def build(self,
-            reg: int,
-            cond: InstCondition,
-            value: str|int|float,
-            width = InstDataType.u64,
-        ) -> vm_if_reg_COND_imm:
+              reg: int,
+              cond: InstCondition,
+              value: str | int | float,
+              width=InstDataType.u64,
+              ) -> vm_if_reg_COND_imm:
         # fix arguments
         if not width:
             width = InstDataType.u32
@@ -1822,14 +1843,14 @@ class vm_if_reg_COND_imm(vm_inst):
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
-            self.binding[sym][1](   # run decoder on input value
-                local_vars[self.binding[sym][0]]
-            ) for sym in self.binding})
+                                 self.binding[sym][1](   # run decoder on input value
+                                     local_vars[self.binding[sym][0]]
+                                 ) for sym in self.binding})
         return self
-    
+
     def asm(self) -> str:
         return super()._asm()
-    
+
     def dism(self) -> str:
         p = self.prop
         return f'if {p.T} r{p.S} {p.c} {p.V:#x}'
@@ -1843,26 +1864,26 @@ class vm_if_reg_COND_reg(vm_inst):
             dtype default = u64
     """
     CODE_TYPE = 'C0???50'
-    
+
     def __init__(self) -> None:
         super().__init__()
         # setup
         self.format = 'C0TcS5X0'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            T = ('width', InstDataType, InstDataType_to_int),
-            c = ('cond', InstCondition, int),
-            S = ('reg', int, int),
-            X = ('reg_other', int, int),
+            T=('width', InstDataType, InstDataType_to_int),
+            c=('cond', InstCondition, int),
+            S=('reg', int, int),
+            X=('reg_other', int, int),
         )
         self._load_format()
 
     def build(self,
-            reg: int,
-            cond: InstCondition,
-            reg_other: int,
-            width = InstDataType.u64,
-        ) -> vm_if_reg_COND_reg:
+              reg: int,
+              cond: InstCondition,
+              reg_other: int,
+              width=InstDataType.u64,
+              ) -> vm_if_reg_COND_reg:
         # verify args
         if reg >= 16:
             raise ValueError(f'reg {reg} out of range')
@@ -1873,14 +1894,14 @@ class vm_if_reg_COND_reg(vm_inst):
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
-            self.binding[sym][1](   # run decoder on input value
-                local_vars[self.binding[sym][0]]
-            ) for sym in self.binding})
+                                 self.binding[sym][1](   # run decoder on input value
+                                     local_vars[self.binding[sym][0]]
+                                 ) for sym in self.binding})
         return self
-    
+
     def asm(self) -> str:
         return super()._asm()
-    
+
     def dism(self) -> str:
         p = self.prop
         return f'if {p.T} r{p.S} {p.c} r{p.X}'
@@ -1916,24 +1937,24 @@ class vm_save_restore(vm_inst):
     + 3: Clear register
     """
     CODE_TYPE = 'C1'
-    
+
     def __init__(self) -> None:
         super().__init__()
         # setup
         self.format = 'C10D0Sx0'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            D = ('dest', int, int),
-            S = ('src', int, int),
-            x = ('op', InstSaveRestoreRegOp, int),
+            D=('dest', int, int),
+            S=('src', int, int),
+            x=('op', InstSaveRestoreRegOp, int),
         )
         self._load_format()
 
     def build(self,
-            dest: int,
-            op: InstSaveRestoreRegOp,
-            src: int,
-        ) -> vm_save_restore:
+              dest: int,
+              op: InstSaveRestoreRegOp,
+              src: int,
+              ) -> vm_save_restore:
         # verify args
         if dest >= 16:
             raise ValueError(f'reg {dest} out of range')
@@ -1942,14 +1963,14 @@ class vm_save_restore(vm_inst):
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
-            self.binding[sym][1](   # run decoder on input value
-                local_vars[self.binding[sym][0]]
-            ) for sym in self.binding})
+                                 self.binding[sym][1](   # run decoder on input value
+                                     local_vars[self.binding[sym][0]]
+                                 ) for sym in self.binding})
         return self
-    
+
     def asm(self) -> str:
         return super()._asm()
-    
+
     def dism(self) -> str:
         p = self.prop
         if p.x == InstSaveRestoreRegOp.SAVE:
@@ -1993,22 +2014,22 @@ class vm_save_restore_mask(vm_inst):
     + 3: Clear register
     """
     CODE_TYPE = 'c2'
-    
+
     def __init__(self) -> None:
         super().__init__()
         # setup
         self.format = 'C2x0XXXX'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            x = ('op', InstSaveRestoreRegOp, int),
-            X = ('mask', int, int),
+            x=('op', InstSaveRestoreRegOp, int),
+            X=('mask', int, int),
         )
         self._load_format()
 
     def build(self,
-            op: InstSaveRestoreRegOp,
-            indicies: str | list[int],
-        ) -> vm_save_restore_mask:
+              op: InstSaveRestoreRegOp,
+              indicies: str | list[int],
+              ) -> vm_save_restore_mask:
         # verify args
         mask = 0
         if isinstance(indicies, str):
@@ -2025,14 +2046,14 @@ class vm_save_restore_mask(vm_inst):
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
-            self.binding[sym][1](   # run decoder on input value
-                local_vars[self.binding[sym][0]]
-            ) for sym in self.binding})
+                                 self.binding[sym][1](   # run decoder on input value
+                                     local_vars[self.binding[sym][0]]
+                                 ) for sym in self.binding})
         return self
-    
+
     def asm(self) -> str:
         return super()._asm()
-    
+
     def dism(self) -> str:
         p = self.prop
         regs = [f'r{i}' for i in range(0, 16) if p.X & (1 << i)]
@@ -2062,25 +2083,25 @@ class vm_rw_static_reg(vm_inst):
     + XX: Static register index, 0x00 to 0x7F for reading or 0x80 to 0xFF for writing.
     + x: Register index.
     """
-    
+
     CODE_NAME = 'static'
     CODE_TYPE = 'c3'
-    
+
     def __init__(self) -> None:
         super().__init__()
         # setup
         self.format = 'C3000XXx'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            X = ('static_reg', int, int),
-            x = ('reg', int, int),
+            X=('static_reg', int, int),
+            x=('reg', int, int),
         )
         self._load_format()
 
     def build(self,
               reg: int,
               static_reg: int,
-        ) -> vm_rw_static_reg:
+              ) -> vm_rw_static_reg:
         # verify args
         if reg >= 16 or reg < 0:
             raise ValueError(f'reg {reg} out of range')
@@ -2089,14 +2110,14 @@ class vm_rw_static_reg(vm_inst):
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
-            self.binding[sym][1](   # run decoder on input value
-                local_vars[self.binding[sym][0]]
-            ) for sym in self.binding})
+                                 self.binding[sym][1](   # run decoder on input value
+                                     local_vars[self.binding[sym][0]]
+                                 ) for sym in self.binding})
         return self
-    
+
     def asm(self) -> str:
         return super()._asm()
-    
+
     def dism(self) -> str:
         p = self.prop
         if p.X > 80:
@@ -2118,9 +2139,10 @@ class vm_pause(vm_inst):
     """
     CODE_NAME = 'pause'
     CODE_TYPE = 'ff0'
+
     def build(self) -> vm_pause:
         return self
-    
+
     def asm(self) -> str:
         return 'FF000000'
 
@@ -2141,9 +2163,10 @@ class vm_resume(vm_inst):
     """
     CODE_NAME = 'resume'
     CODE_TYPE = 'ff1'
+
     def build(self) -> vm_resume:
         return self
-    
+
     def asm(self) -> str:
         return 'FF100000'
 
@@ -2199,21 +2222,21 @@ class _vm_log(vm_inst):
         self.format = 'FFFTIXmn'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            T = ('width', InstDataType, InstDataType_to_int),
-            I = ('id', int, int),
-            X = ('type', InstDebugType, int),
-            m = ('mem_or_reg', int, int),
-            n = ('value_or_reg', int, int),
+            T=('width', InstDataType, InstDataType_to_int),
+            I=('id', int, int),
+            X=('type', InstDebugType, int),
+            m=('mem_or_reg', int, int),
+            n=('value_or_reg', int, int),
         )
         self._load_format()
 
     def build(self,
-            id: int,
-            type: InstDebugType,
-            mem_or_reg: int | InstMemBase,
-            value_or_reg: int,
-            width = InstDataType.u64,
-        ) -> _vm_log:
+              id: int,
+              type: InstDebugType,
+              mem_or_reg: int | InstMemBase,
+              value_or_reg: int,
+              width=InstDataType.u64,
+              ) -> _vm_log:
         # verify args
         if id >= 16:
             raise ValueError(f'reg {id} out of range')
@@ -2228,22 +2251,22 @@ class _vm_log(vm_inst):
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
-            self.binding[sym][1](   # run decoder on input value
-                local_vars[self.binding[sym][0]]
-            ) for sym in self.binding})
+                                 self.binding[sym][1](   # run decoder on input value
+                                     local_vars[self.binding[sym][0]]
+                                 ) for sym in self.binding})
         # fix n width
         if self.prop.X in [0, 2]:
             self.format = 'FFFTIXmn nnnnnnnn'
             self.format_info['n'] = (7, 9)
         return self
-    
+
     def asm(self) -> str:
         # fix n width.
         if self.prop.X in [0, 2]:
             self.format = 'FFFTIXmn nnnnnnnn'
             self.format_info['n'] = (7, 9)
         return super()._asm()
-    
+
     def dism(self) -> str:
         p = self.prop
         if p.X == InstDebugType.MEMBASE_OFF:
@@ -2260,26 +2283,34 @@ class _vm_log(vm_inst):
 
 class vm_log_off(_vm_log):
     CODE_TYPE = 'fff??0'
-    def build(self, id: int, offset: int, base = InstMemBase.MAIN, width=InstDataType.u64) -> vm_log_off:
+
+    def build(self, id: int, offset: int, base=InstMemBase.MAIN, width=InstDataType.u64) -> vm_log_off:
         return super().build(id, InstDebugType.MEMBASE_OFF, base, offset, width)
+
 
 class vm_log_offreg(_vm_log):
     CODE_TYPE = 'fff??1'
-    def build(self, id: int, offreg: int, base = InstMemBase.MAIN, width=InstDataType.u64) -> vm_log_off:
+
+    def build(self, id: int, offreg: int, base=InstMemBase.MAIN, width=InstDataType.u64) -> vm_log_off:
         return super().build(id, InstDebugType.MEMBASE_REG, base, offreg, width)
+
 
 class vm_log_reg_off(_vm_log):
     CODE_TYPE = 'fff??2'
+
     def build(self, id: int, reg: int, offset: int, width=InstDataType.u64) -> vm_log_off:
         return super().build(id, InstDebugType.REG_OFF, reg, offset, width)
 
+
 class vm_log_reg_offreg(_vm_log):
     CODE_TYPE = 'fff??3'
+
     def build(self, id: int, reg: int, offreg: int, width=InstDataType.u64) -> vm_log_off:
         return super().build(id, InstDebugType.REG_OFFREG, reg, offreg, width)
 
+
 class vm_log_reg(_vm_log):
     CODE_TYPE = 'fff??4'
+
     def build(self, id: int, reg: int, width=InstDataType.u64) -> vm_log_off:
         return super().build(id, InstDebugType.REG, reg, 0, width)
-

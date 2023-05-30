@@ -2,22 +2,26 @@
 
 Dead Simple Assembler/Disassembler for Atmosphere dmnt Cheat VM.
 
-## [Online Demo](https://nx.tot.im/)
+## [Online Interative Demo](https://nx.tot.im/)
 
+The demo provides bi-directional conversion between machine code and assembly.
+
+You can edit in either side at any time, the other side will be updated automatically.
 
 ## Start Local Server
+
 ```bash
 pip3 install flask
 python3 server/app.py
 ```
 
 ## Example
-![example](github/screenshot.bmp)
 
+![example](github/screenshot.bmp)
 
 ## Cheat VM
 
-The Cheat VM is a virtual machine that provides a set of registers and save slots for executing instructions. It supports various operations and data types, but does not include division or floating-point capabilities.
+The Cheat VM is a virtual machine that provides a set of registers and save slots for executing instructions. It supports various operations and data types including float and negative number, but does not include division capabilities.
 
 ### Glossary
 
@@ -62,12 +66,14 @@ Feel free to explore the Cheat VM and experiment with its features using the pro
 The `=` operator indicates a read/write instruction.
 
 You can perform the following operations:
+
 - `reg<->mem`: Transfer data between a register and game process memory.
 - `reg<->reg`: Transfer data between two registers.
 - `reg<->save`: Transfer data between a register and a save slot.
 - `reg<->static`: Transfer data between a register and a static register.
 
 You can also perform the following assignments:
+
 - `reg<-imm`: Assign an immediate value to a register.
 - `mem<-imm`: Assign an immediate value to a memory location.
 - `save<-0`: Assign the value `0` to a save slot.
@@ -175,6 +181,7 @@ endloop rN
 ```
 
 ### Other Commands
+
 ```bash
 # save/restore
 save[i] = rN
@@ -225,6 +232,7 @@ nop
 ```
 
 ### Python API
+
 ```py
 from dmnt_asm.parser import CheatParser
 from pathlib import Path

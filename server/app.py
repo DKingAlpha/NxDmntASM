@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-#-*- coding:utf-8 -*-
+# -*- coding:utf-8 -*-
 
 import sys
 from pathlib import Path
@@ -10,15 +10,18 @@ from dmnt_asm.parser import CheatParser
 
 app = Flask(__name__)
 
+
 @app.route('/')
 def index():
     return render_template('index.html')
+
 
 @app.route('/dmnt_dism', methods=['POST'])
 def dmnt_dism():
     text = request.form['text']
     # Perform any processing on the text if needed
     errors = []
+
     def err_handler(msg):
         nonlocal errors
         errors.append(msg)
@@ -37,6 +40,7 @@ def dmnt_asm():
     text = request.form['text']
     # Perform any processing on the text if needed
     errors = []
+
     def err_handler(msg):
         nonlocal errors
         errors.append(msg)

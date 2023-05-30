@@ -1,8 +1,9 @@
 #!/usr/bin/python3
-#-*- coding:utf-8 -*-
+# -*- coding:utf-8 -*-
 
 from __future__ import annotations
 import re
+
 
 def int_to_dtype_hexstr(num: int, dtype: str, short_hex: bool = False, truncate: bool = False) -> str:
     dtype = dtype.strip()
@@ -16,16 +17,20 @@ def int_to_dtype_hexstr(num: int, dtype: str, short_hex: bool = False, truncate:
             if not (min_signed_value <= num <= max_signed_value):
                 orig_num = num
                 num = num & ((1 << bit_width) - 1)
-                raise OverflowError(f'Number {orig_num:#x} does not fit in {dtype}')
+                raise OverflowError(
+                    f'Number {orig_num:#x} does not fit in {dtype}')
         else:
             max_unsigned_value = (1 << (bit_width)) - 1
             if not (0 <= num <= max_unsigned_value):
                 orig_num = num
                 num = num & ((1 << bit_width) - 1)
-                raise OverflowError(f'Number {orig_num:#x} does not fit in {dtype}')
+                raise OverflowError(
+                    f'Number {orig_num:#x} does not fit in {dtype}')
     dtype_mask = (1 << (bit_width)) - 1
-    hex_format = '#x' if short_hex else '#0' + str(int(bit_width / 8) * 2 + 2) + 'x'
+    hex_format = '#x' if short_hex else '#0' + \
+        str(int(bit_width / 8) * 2 + 2) + 'x'
     return f'{num & dtype_mask:{hex_format}}'
+
 
 def hexstr_to_dtype_int(hexstr: str, dtype: str) -> int:
     if len(hexstr) == 0:
@@ -67,6 +72,7 @@ def is_imm(s: str) -> bool:
     except ValueError:
         pass
     return False
+
 
 def get_reg_num(s: str) -> int:
     if not s:

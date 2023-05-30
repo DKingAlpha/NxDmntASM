@@ -1,9 +1,10 @@
 #!/usr/bin/python3
-#-*- coding:utf-8 -*-
+# -*- coding:utf-8 -*-
 
 from enum import IntEnum, StrEnum, IntFlag
 import string
 from .utils import is_imm, get_reg_num
+
 
 class InstEnum(IntEnum):
     @classmethod
@@ -24,9 +25,10 @@ class InstEnum(IntEnum):
                 if member.name.lower() == str(value).lower():
                     return member
             if isinstance(value, str) and is_imm(value):
-                if member.value == int(value ,0):
+                if member.value == int(value, 0):
                     return member
         return None
+
 
 class InstRegister(InstEnum):
     r0 = 0
@@ -80,13 +82,14 @@ class InstDataType(StrEnum):
                 return cls.float
             if dtype == 'double':
                 return cls.double
-            if len(dtype) in [2,3] and dtype[0] in ['i', 'u'] and dtype[1:].isnumeric():
+            if len(dtype) in [2, 3] and dtype[0] in ['i', 'u'] and dtype[1:].isnumeric():
                 bitwidth = int(dtype[1:])
-                if bitwidth % 8 == 0 and bitwidth // 8 in [1,2,4,8]:
+                if bitwidth % 8 == 0 and bitwidth // 8 in [1, 2, 4, 8]:
                     return width_to_datatype(bitwidth // 8)
         if isinstance(value, int):
             return width_to_datatype(value)
         return None
+
 
 def InstDataType_to_int(width: InstDataType) -> int:
     if width in [InstDataType.u8, InstDataType.i8]:
@@ -102,11 +105,13 @@ def InstDataType_to_int(width: InstDataType) -> int:
     elif width == InstDataType.double:
         return 8
 
+
 class InstMemBase(InstEnum):
     MAIN = 0
     HEAP = 1
     ALIAS = 2
     ASLR = 3
+
 
 class InstCondition(InstEnum):
     GT = 1
@@ -115,14 +120,13 @@ class InstCondition(InstEnum):
     LTE = 4
     EQ = 5
     NEQ = 6
-    
+
     def __str__(self):
         for sym in ConditionSymbolMapping:
             if ConditionSymbolMapping[sym] == self.value:
                 return sym
         # assert False, f"Invalid condition: {self.value}"
         return str(self.name)
-
 
     @classmethod
     def _missing_(cls, value):
@@ -131,7 +135,7 @@ class InstCondition(InstEnum):
         return super()._missing_(value)
 
 
-ConditionSymbolMapping: dict =  {
+ConditionSymbolMapping: dict = {
     '>': InstCondition.GT,
     '>=': InstCondition.GTE,
     '<': InstCondition.LT,
@@ -160,12 +164,12 @@ class InstArithmetic(InstEnum):
         # assert False, f"Invalid condition: {self.value}"
         return str(self.name)
 
-
     @classmethod
     def _missing_(cls, value):
         if value in ArithmeticSymbolMapping:
             return ArithmeticSymbolMapping[value]
         return super()._missing_(value)
+
 
 ArithmeticSymbolMapping: dict = {
     '+': InstArithmetic.ADD,
@@ -179,6 +183,7 @@ ArithmeticSymbolMapping: dict = {
     '^': InstArithmetic.LOGICAL_XOR,
     '=': InstArithmetic.MOVE
 }
+
 
 class InstKeyName(InstEnum):
     A = 0x00000001
@@ -207,6 +212,7 @@ class InstKeyName(InstEnum):
     RSTICK_DOWN = 0x00800000
     SL = 0x01000000
     SR = 0x02000000
+
 
 class InstKeyFlag(IntFlag):
     A = 0x00000001
@@ -245,6 +251,7 @@ class InstOffsetType(InstEnum):
     MEMBASE_IMM = 4
     MEMBASE_IMM_OFFREG = 5
 
+
 class InstDebugType(InstEnum):
     MEMBASE_OFF = 0
     MEMBASE_REG = 1
@@ -252,11 +259,13 @@ class InstDebugType(InstEnum):
     REG_OFFREG = 3
     REG = 4
 
+
 class InstSaveRestoreRegOp(InstEnum):
     RESTORE = 0
     SAVE = 1
     CLEAR = 2
     REG_ZERO = 2
+
 
 def dtype_to_width(dtype: str) -> InstDataType:
     dtype = dtype.strip()

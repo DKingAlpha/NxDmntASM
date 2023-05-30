@@ -4,20 +4,19 @@ var editor_right = null;
 function downloadTextToFile(text, filename) {
     const blob = new Blob([text], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
-  
+
     const link = document.createElement('a');
     link.href = url;
     link.download = filename;
-  
+
     document.body.appendChild(link);
     link.click();
-  
+
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 }
 
-function setupNxDmntAsm()
-    {
+function setupNxDmntAsm() {
     // Register a new language
     monaco.languages.register({ id: "nx-dmnt-asm" });
 
@@ -44,7 +43,7 @@ function setupNxDmntAsm()
         base: "vs",
         inherit: false,
         rules: [
-            { token: "master-entry", foreground: "cc00ff", fontStyle: "bold italic underline"},
+            { token: "master-entry", foreground: "cc00ff", fontStyle: "bold italic underline" },
             { token: "entry", foreground: "ff5050", fontStyle: "underline" },
             { token: "comment", foreground: "339933" },
             { token: "keyword", foreground: "0000cc", fontStyle: "bold" },
@@ -255,7 +254,7 @@ function setupAutoAsm() {
             .catch((error) => console.error(error));
     }
 
-    
+
     function dmnt_asm(text) {
         last_active_time = Date.now();
         last_req_right_text = text;
@@ -316,7 +315,7 @@ function setLog(log) {
     localStorage.setItem("log", log);
 }
 
-window.addEventListener('DOMContentLoaded', ()=>{
+window.addEventListener('DOMContentLoaded', () => {
     setupNxDmntAsm();
     setupAutoAsm();
     for (const k of ['left_code', 'right_code', 'log']) {
@@ -335,7 +334,7 @@ window.addEventListener('DOMContentLoaded', ()=>{
 
 
 function getExampleCode() {
-return `[Moon Jump]
+    return `[Moon Jump]
 80000002
 580F0000 05C3FA50
 580F1000 00000260

@@ -6,6 +6,7 @@ import re
 import string
 from abc import ABC, abstractmethod
 from collections import OrderedDict
+import struct
 
 from .utils import *
 from .constants import *
@@ -20,6 +21,39 @@ class _Properties(OrderedDict):
 
 def _int_from_hex(hexstr: str) -> int:
     return int(hexstr, 16)
+
+
+def reinterpret_cast_to_int(value: str|int|float, width: InstDataType) -> int:
+    if width == InstDataType.float:
+        if '.' not in value:
+            value = int(value, 0)
+        return struct.unpack('>I', struct.pack('>f', float(value)))[0]
+    elif width == InstDataType.double:
+        if '.' not in value:
+            value = int(value, 0)
+        return struct.unpack('>Q', struct.pack('>d', float(value)))[0]
+    else:
+        if isinstance(value, str):
+            hexint = int(value, 0)
+        else:
+            hexint = int(value)
+        if width == InstDataType.i8:
+            return struct.unpack('>B', struct.pack('>b', hexint))[0]
+        elif width == InstDataType.i16:
+            return struct.unpack('>H', struct.pack('>h', hexint))[0]
+        elif width == InstDataType.i32:
+            return struct.unpack('>I', struct.pack('>i', hexint))[0]
+        elif width == InstDataType.i64:
+            return struct.unpack('>Q', struct.pack('>q', hexint))[0]
+        elif width == InstDataType.u8:
+            return struct.unpack('>B', struct.pack('>B', hexint))[0]
+        elif width == InstDataType.u16:
+            return struct.unpack('>H', struct.pack('>H', hexint))[0]
+        elif width == InstDataType.u32:
+            return struct.unpack('>I', struct.pack('>I', hexint))[0]
+        elif width == InstDataType.u64:
+            return struct.unpack('>Q', struct.pack('>Q', hexint))[0]
+
 
 def _aob_match(code_type: int|str, mc: str) -> bool:
     if isinstance(code_type, int):
@@ -65,8 +99,8 @@ class vm_inst(ABC):
             pos, width = self.format_info[k]
             real_width = width
             k_value = self.binding[k][2](p)
-            if '(V' in self.format and k == 'V':
-                if 'T' in self.prop and self.prop.T == InstWidth.X:
+            if k == 'V' and '(V' in self.format:
+                if 'T' in self.prop and InstDataType_to_int(self.prop.T) == 8:
                     real_width = 16
             raw[pos:pos+real_width] = list(f'{k_value:0{real_width}X}')
         
@@ -101,7 +135,7 @@ class vm_inst(ABC):
             real_width = width
             if '(V' in self.format and k == 'V':
                 # only allow expansion if format has (VVVVVVVV)
-                if 'T' in self.prop and self.prop.T == InstWidth.X:
+                if 'T' in self.prop and self.prop.T == InstDataType.u64:
                     real_width = 16
             if start_pos + real_width > len(code):
                 return False
@@ -261,7 +295,7 @@ def vm_inst_asm(raw_line: str) -> vm_inst:
         if op1[0] == '[' and op1[-1] == ']':
             if not is_imm(op2):
                 raise SyntaxError(f'{op2} is not imm in if statement')
-            value = int(op2, 0)
+            value: str = op2
             base, offset, regs = _get_base_offset_regs_from_bracket(op1)
             if base is None:
                 raise SyntaxError(f'missing mem base here')
@@ -297,7 +331,7 @@ def vm_inst_asm(raw_line: str) -> vm_inst:
         elif op1[0] == 'r':
             if not is_imm(op2):
                 raise SyntaxError(f'{op2} is not imm in if statement')
-            value = int(op2, 0)
+            value: str = op2
             rN = get_reg_num(op1)
             if rN < 0:
                 raise SyntaxError(f'illegal {op1} in if statement')
@@ -460,7 +494,7 @@ def _vm_inst_asm_rw(dtype: str, asm_line: str) -> vm_inst:
                 raise SyntaxError(f'invalid register {op1}')
             return vm_set_reg_reg().build(rD, rS, op, rs, dtype)
         elif is_imm(match.group(4)):
-            return vm_set_reg_imm().build(rD, rS, op, int(match.group(4), 0), dtype)
+            return vm_set_reg_imm().build(rD, rS, op, match.group(4), dtype)
         else:
             raise SyntaxError(f'invalid operand {match.group(4)}')
 
@@ -474,7 +508,7 @@ def _vm_inst_asm_rw(dtype: str, asm_line: str) -> vm_inst:
         rN = int(match.group(1))
         op = InstArithmetic(op)
         if is_imm(match.group(3)):
-            return vm_legacy_set_imm().build(rN, op, int(match.group(3), 0), dtype)
+            return vm_legacy_set_imm().build(rN, op, match.group(3), dtype)
         else:
             raise SyntaxError(f'invalid imm {match.group(3)}')
 
@@ -483,7 +517,7 @@ def _vm_inst_asm_rw(dtype: str, asm_line: str) -> vm_inst:
     match = re.match(r'^r(\d+)\s*=\s*([^r]+)$', asm_line)
     if match:
         if is_imm(match.group(2)):
-            return vm_move_reg().build(int(match.group(1)), int(match.group(2), 0))
+            return vm_move_reg().build(int(match.group(1)), match.group(2))
         else:
             # well could be and [...] expression. dont raise error here
             pass
@@ -500,7 +534,7 @@ def _vm_inst_asm_rw(dtype: str, asm_line: str) -> vm_inst:
         # {dtype} [base + {+offset {+rM{++}}}] = rS
         base, offset, regs = _get_base_offset_regs_from_bracket(op1)
         if is_imm(op2):
-            value = int(op2, 0)
+            value: str = op2
             if base is not None:
                 if len(regs) == 0 or len(regs) > 2:
                     raise SyntaxError(f'illegal registers in {op1}')
@@ -609,7 +643,7 @@ class vm_store_imm(vm_inst):
         self.format = '0TMR00AA AAAAAAAA VVVVVVVV (VVVVVVVV)'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            T = ('width', InstWidth, int),
+            T = ('width', InstDataType, InstDataType_to_int),
             M = ('base', InstMemBase, int),
             R = ('offreg', int, int),
             A = ('offset', int, int),
@@ -619,20 +653,21 @@ class vm_store_imm(vm_inst):
 
     def build(self,
             offset: int,    # uint40
-            value: int,     # <= uintmax_of(width)
+            value: str|int|float,     # <= uintmax_of(width)
             offreg = 0,
             base = InstMemBase.MAIN,
-            width = InstWidth.W,
+            width = InstDataType.u32,
         ) -> vm_store_imm:
+        # fix arguments
+        if not width:
+            width = InstDataType.u32
+        width = InstDataType(width)
+        value = reinterpret_cast_to_int(value, width)
         # verify args
         if offreg >= 16 or offreg < 0:
             raise ValueError(f'reg {offreg} out of range')
         if (offset >> 10 * 4) != 0:
             raise ValueError(f'offset {offset} larger than 40 bits')
-        if value >= (1 << (int(InstWidth(width))*8)):
-            raise ValueError(f'value {value} overflows width {width}')
-        if not width:
-            width = InstWidth.W
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
@@ -688,7 +723,7 @@ class vm_if_off_COND_imm(vm_inst):
         self.format = '1TMC00AA AAAAAAAA VVVVVVVV (VVVVVVVV)'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            T = ('width', InstWidth, int),
+            T = ('width', InstDataType, InstDataType_to_int),
             M = ('base', InstMemBase, int),
             C = ('cond', InstCondition, int),
             A = ('offset', int, int),
@@ -699,17 +734,18 @@ class vm_if_off_COND_imm(vm_inst):
     def build(self,
             offset: int,    # uint40
             cond: InstCondition,
-            value: int,     # <= uintmax_of(width)
+            value: str|int|float,     # <= uintmax_of(width)
             base = InstMemBase.MAIN,
-            width = InstWidth.W,
+            width = InstDataType.u32,
         ) -> vm_if_off_COND_imm:
+        # fix arguments
+        if not width:
+            width = InstDataType.u32
+        width = InstDataType(width)
+        value = reinterpret_cast_to_int(value, width)
         # verify args
         if (offset >> self.format.count('A') * 4) != 0:
             raise ValueError(f'offset {offset} larger than 40 bits')
-        if value >= (1 << (int(InstWidth(width))*8)):
-            raise ValueError(f'value {value} overflows width {width}')
-        if not width:
-            width = InstWidth.W
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
@@ -898,13 +934,17 @@ class vm_move_reg(vm_inst):
 
     def build(self,
             reg: int,
-            value: int,
+            value: str|int|float,
+            width = InstDataType.u64,
         ) -> vm_move_reg:
+        # fix arguments
+        if not width:
+            width = InstDataType.u64
+        width = InstDataType(width)
+        value = reinterpret_cast_to_int(value, width)
         # verify args
         if (reg >= 16):
             raise ValueError(f'reg {reg} out of range')
-        if (value >> self.format.count('V') * 4) != 0:
-            raise ValueError(f'value {value} overflow')
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
@@ -954,7 +994,7 @@ class vm_load(vm_inst):
         self.format = '5TMRS0AA AAAAAAAA'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            T = ('width', InstWidth, int),
+            T = ('width', InstDataType, InstDataType_to_int),
             M = ('base', InstMemBase, int),
             R = ('reg', int, int),
             A = ('offset', int, int),
@@ -967,7 +1007,7 @@ class vm_load(vm_inst):
             offset: int,    # uint40
             self_deref: bool,
             base = InstMemBase.MAIN,
-            width = InstWidth.W,
+            width = InstDataType.u32,
         ) -> vm_load:
         # verify args
         if (reg >= 16):
@@ -975,7 +1015,7 @@ class vm_load(vm_inst):
         if (offset >> self.format.count('A') * 4) != 0:
             raise ValueError(f'offset {offset} overflow')
         if not width:
-            width = InstWidth.W
+            width = InstDataType.u32
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
@@ -1029,7 +1069,7 @@ class vm_store_reg_imm(vm_inst):
         self.format = '6T0RIor0 VVVVVVVV VVVVVVVV'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            T = ('width', InstWidth, int),
+            T = ('width', InstDataType, InstDataType_to_int),
             R = ('basereg', int, int),
             I = ('basereg_inc', bool, int),
             o = ('off_by_reg', bool, int),
@@ -1040,17 +1080,20 @@ class vm_store_reg_imm(vm_inst):
 
     def build(self,
             basereg: int,
-            value: int,
+            value: str|int|float,
             basereg_inc: bool = False,
             off_by_reg: bool = False,
             offreg: int = 0,
-            width = InstWidth.W,
+            width = InstDataType.u32,
         ) -> vm_store_reg_imm:
+        # fix arguments
+        if not width:
+            width = InstDataType.u32
+        width = InstDataType(width)
+        value = reinterpret_cast_to_int(value, width)
         # verify args
         if offreg >= 16 or offreg < 0:
             raise ValueError(f'reg {offreg} out of range')
-        if not width:
-            width = InstWidth.W
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
@@ -1109,7 +1152,7 @@ class vm_legacy_set_imm(vm_inst):
         self.format = '7T0RC000 VVVVVVVV'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            T = ('width', InstWidth, int),
+            T = ('width', InstDataType, InstDataType_to_int),
             R = ('reg', int, int),
             C = ('op', InstArithmetic, int),
             V = ('value', int, int),
@@ -1119,13 +1162,17 @@ class vm_legacy_set_imm(vm_inst):
     def build(self,
             reg: int,
             op: InstArithmetic,
-            value: int,
-            width = InstWidth.W,
+            value: str|int|float,
+            width = InstDataType.u32,
         ) -> vm_store_reg_imm:
+        # fix arguments
+        if not width:
+            width = InstDataType.u32
+        width = InstDataType(width)
+        value = reinterpret_cast_to_int(value, width)
+        # verify args
         if reg >= 16 or reg < 0:
             raise ValueError(f'reg out of range')
-        if not width:
-            width = InstWidth.W
         # bind args
         if isinstance(op, str) and op != '=' and op.endswith('='):
             op = InstArithmetic(op[:-1])
@@ -1246,7 +1293,7 @@ class vm_set_reg_reg(vm_inst):
         self.format = '9TCRS0s0'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            T = ('width', InstWidth, int),
+            T = ('width', InstDataType, InstDataType_to_int),
             C = ('op', InstArithmetic, int),
             R = ('dest', int, int),
             S = ('op1', int, int),
@@ -1259,12 +1306,12 @@ class vm_set_reg_reg(vm_inst):
             op1: int,
             op: InstArithmetic,
             op2: int,
-            width = InstWidth.W,
+            width = InstDataType.u32,
         ) -> vm_store_reg_imm:
         if dest >= 16 or dest < 0 or op1 >= 16 or op1 < 0 or op2 >= 16 or op2 < 0:
             raise ValueError(f'reg out of range')
         if not width:
-            width = InstWidth.W
+            width = InstDataType.u32
         # bind args
         if isinstance(op, str) and op != '=' and op.endswith('='):
             op = InstArithmetic(op[:-1])
@@ -1315,7 +1362,7 @@ class vm_set_reg_imm(vm_inst):
         self.format = '9TCRS100 VVVVVVVV (VVVVVVVV)'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            T = ('width', InstWidth, int),
+            T = ('width', InstDataType, InstDataType_to_int),
             C = ('op', InstArithmetic, int),
             R = ('dest', int, int),
             S = ('src', int, int),
@@ -1327,14 +1374,17 @@ class vm_set_reg_imm(vm_inst):
             dest: int,
             src: int,
             op: InstArithmetic,
-            value: int,
-            width = InstWidth.W,
+            value: str|int|float,
+            width = InstDataType.u32,
         ) -> vm_set_reg_imm:
+        # fix arguments
+        if not width:
+            width = InstDataType.u32
+        width = InstDataType(width)
+        value = reinterpret_cast_to_int(value, width)
         # verify args
         if dest >= 16 or dest < 0 or src >= 16 or src < 0:
             raise ValueError(f'reg out of range')
-        if not width:
-            width = InstWidth.W
         # bind args
         if isinstance(op, str) and op != '=' and op.endswith('='):
             op = InstArithmetic(op[:-1])
@@ -1405,7 +1455,7 @@ class vm_store_reg(vm_inst):
         self.format = 'ATSRIOxa (aaaaaaaa)'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            T = ('width', InstWidth, int),
+            T = ('width', InstDataType, InstDataType_to_int),
             S = ('srcreg', int, int),
             R = ('basereg', int, int),
             I = ('basereg_inc', bool, int),
@@ -1422,7 +1472,7 @@ class vm_store_reg(vm_inst):
             offset: int,
             offreg_or_membase: int | InstMemBase,
             srcreg: int,
-            width = InstWidth.W,
+            width = InstDataType.u32,
         ) -> vm_store_reg:
         # verify args
         if srcreg >= 16 or basereg >= 16 or (int(offset_type) <= 1 and offreg_or_membase >= 16):
@@ -1430,7 +1480,7 @@ class vm_store_reg(vm_inst):
         if (offset >> (self.format.count('a')) * 4) != 0:
             raise ValueError(f'offset {offset} overflow')
         if not width:
-            width = InstWidth.W
+            width = InstDataType.u32
         # bind args
         if not isinstance(offreg_or_membase, int):
             # make it works for string 'main'
@@ -1530,7 +1580,7 @@ class vm_if_reg_COND_off(vm_inst):
         self.format = 'C0TcS0Ma aaaaaaaa'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            T = ('width', InstWidth, int),
+            T = ('width', InstDataType, InstDataType_to_int),
             c = ('cond', InstCondition, int),
             S = ('reg', int, int),
             M = ('base', InstMemBase, int),
@@ -1543,13 +1593,13 @@ class vm_if_reg_COND_off(vm_inst):
             cond: InstCondition,
             offset: int,    # uint36
             base = InstMemBase.MAIN,
-            width = InstWidth.X,
+            width = InstDataType.u64,
         ) -> vm_if_reg_COND_off:
         # verify args
         if (offset >> self.format.count('a') * 4) != 0:
             raise ValueError(f'offset {offset} larger than 40 bits')
         if not width:
-            width = InstWidth.X
+            width = InstDataType.u64
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
@@ -1581,7 +1631,7 @@ class vm_if_reg_COND_offreg(vm_inst):
         self.format = 'C0TcS1Mr'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            T = ('width', InstWidth, int),
+            T = ('width', InstDataType, InstDataType_to_int),
             c = ('cond', InstCondition, int),
             S = ('reg', int, int),
             M = ('base', InstMemBase, int),
@@ -1594,7 +1644,7 @@ class vm_if_reg_COND_offreg(vm_inst):
             cond: InstCondition,
             offreg: int,
             base = InstMemBase.MAIN,
-            width = InstWidth.X,
+            width = InstDataType.u64,
         ) -> vm_if_reg_COND_offreg:
         # verify args
         if reg >= 16:
@@ -1602,7 +1652,7 @@ class vm_if_reg_COND_offreg(vm_inst):
         if offreg >= 16:
             raise ValueError(f'reg {offreg} out of range')
         if not width:
-            width = InstWidth.X
+            width = InstDataType.u64
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
@@ -1638,7 +1688,7 @@ class vm_if_reg_COND_reg_off(vm_inst):
         self.format = 'C0TcS2Ra aaaaaaaa'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            T = ('width', InstWidth, int),
+            T = ('width', InstDataType, InstDataType_to_int),
             c = ('cond', InstCondition, int),
             S = ('reg', int, int),
             R = ('basereg', int, int),
@@ -1651,7 +1701,7 @@ class vm_if_reg_COND_reg_off(vm_inst):
             cond: InstCondition,
             basereg: int,
             offset: int,    # uint36
-            width = InstWidth.X,
+            width = InstDataType.u64,
         ) -> vm_if_reg_COND_reg_off:
         # verify args
         if reg >= 16:
@@ -1661,7 +1711,7 @@ class vm_if_reg_COND_reg_off(vm_inst):
         if (offset >> self.format.count('a') * 4) != 0:
             raise ValueError(f'offset {offset} larger than 40 bits')
         if not width:
-            width = InstWidth.X
+            width = InstDataType.u64
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
@@ -1693,7 +1743,7 @@ class vm_if_reg_COND_reg_reg(vm_inst):
         self.format = 'C0TcS3Rr'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            T = ('width', InstWidth, int),
+            T = ('width', InstDataType, InstDataType_to_int),
             c = ('cond', InstCondition, int),
             S = ('reg', int, int),
             R = ('basereg', int, int),
@@ -1706,7 +1756,7 @@ class vm_if_reg_COND_reg_reg(vm_inst):
             cond: InstCondition,
             basereg: int,
             offreg: int,
-            width = InstWidth.X,
+            width = InstDataType.u64,
         ) -> vm_if_reg_COND_reg_reg:
         # verify args
         if reg >= 16:
@@ -1716,7 +1766,7 @@ class vm_if_reg_COND_reg_reg(vm_inst):
         if offreg >= 16:
             raise ValueError(f'reg {offreg} out of range')
         if not width:
-            width = InstWidth.X
+            width = InstDataType.u64
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
@@ -1748,7 +1798,7 @@ class vm_if_reg_COND_imm(vm_inst):
         self.format = 'C0TcS400 VVVVVVVV (VVVVVVVV)'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            T = ('width', InstWidth, int),
+            T = ('width', InstDataType, InstDataType_to_int),
             c = ('cond', InstCondition, int),
             S = ('reg', int, int),
             V = ('value', int, int),
@@ -1758,16 +1808,17 @@ class vm_if_reg_COND_imm(vm_inst):
     def build(self,
             reg: int,
             cond: InstCondition,
-            value: int,
-            width = InstWidth.X,
+            value: str|int|float,
+            width = InstDataType.u64,
         ) -> vm_if_reg_COND_imm:
+        # fix arguments
+        if not width:
+            width = InstDataType.u32
+        width = InstDataType(width)
+        value = reinterpret_cast_to_int(value, width)
         # verify args
         if reg >= 16:
             raise ValueError(f'reg {reg} out of range')
-        if value >= (1 << (int(InstWidth(width))*8)):
-            raise ValueError(f'value {value} overflows width {width}')
-        if not width:
-            width = InstWidth.X
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
@@ -1799,7 +1850,7 @@ class vm_if_reg_COND_reg(vm_inst):
         self.format = 'C0TcS5X0'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            T = ('width', InstWidth, int),
+            T = ('width', InstDataType, InstDataType_to_int),
             c = ('cond', InstCondition, int),
             S = ('reg', int, int),
             X = ('reg_other', int, int),
@@ -1810,7 +1861,7 @@ class vm_if_reg_COND_reg(vm_inst):
             reg: int,
             cond: InstCondition,
             reg_other: int,
-            width = InstWidth.X,
+            width = InstDataType.u64,
         ) -> vm_if_reg_COND_reg:
         # verify args
         if reg >= 16:
@@ -1818,7 +1869,7 @@ class vm_if_reg_COND_reg(vm_inst):
         if reg_other >= 16:
             raise ValueError(f'reg {reg_other} out of range')
         if not width:
-            width = InstWidth.X
+            width = InstDataType.u64
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
@@ -2148,7 +2199,7 @@ class _vm_log(vm_inst):
         self.format = 'FFFTIXmn'
         self.binding = _Properties(
             # sym: (name, decoder, encoder)
-            T = ('width', InstWidth, int),
+            T = ('width', InstDataType, InstDataType_to_int),
             I = ('id', int, int),
             X = ('type', InstDebugType, int),
             m = ('mem_or_reg', int, int),
@@ -2161,7 +2212,7 @@ class _vm_log(vm_inst):
             type: InstDebugType,
             mem_or_reg: int | InstMemBase,
             value_or_reg: int,
-            width = InstWidth.X,
+            width = InstDataType.u64,
         ) -> _vm_log:
         # verify args
         if id >= 16:
@@ -2173,7 +2224,7 @@ class _vm_log(vm_inst):
         else:
             assert False, f'unknown log type {type}'
         if not width:
-            width = InstWidth.X
+            width = InstDataType.u64
         # bind args
         local_vars = locals()
         self.prop = _Properties({sym:
@@ -2209,26 +2260,26 @@ class _vm_log(vm_inst):
 
 class vm_log_off(_vm_log):
     CODE_TYPE = 'fff??0'
-    def build(self, id: int, offset: int, base = InstMemBase.MAIN, width=InstWidth.X) -> vm_log_off:
+    def build(self, id: int, offset: int, base = InstMemBase.MAIN, width=InstDataType.u64) -> vm_log_off:
         return super().build(id, InstDebugType.MEMBASE_OFF, base, offset, width)
 
 class vm_log_offreg(_vm_log):
     CODE_TYPE = 'fff??1'
-    def build(self, id: int, offreg: int, base = InstMemBase.MAIN, width=InstWidth.X) -> vm_log_off:
+    def build(self, id: int, offreg: int, base = InstMemBase.MAIN, width=InstDataType.u64) -> vm_log_off:
         return super().build(id, InstDebugType.MEMBASE_REG, base, offreg, width)
 
 class vm_log_reg_off(_vm_log):
     CODE_TYPE = 'fff??2'
-    def build(self, id: int, reg: int, offset: int, width=InstWidth.X) -> vm_log_off:
+    def build(self, id: int, reg: int, offset: int, width=InstDataType.u64) -> vm_log_off:
         return super().build(id, InstDebugType.REG_OFF, reg, offset, width)
 
 class vm_log_reg_offreg(_vm_log):
     CODE_TYPE = 'fff??3'
-    def build(self, id: int, reg: int, offreg: int, width=InstWidth.X) -> vm_log_off:
+    def build(self, id: int, reg: int, offreg: int, width=InstDataType.u64) -> vm_log_off:
         return super().build(id, InstDebugType.REG_OFFREG, reg, offreg, width)
 
 class vm_log_reg(_vm_log):
     CODE_TYPE = 'fff??4'
-    def build(self, id: int, reg: int, width=InstWidth.X) -> vm_log_off:
+    def build(self, id: int, reg: int, width=InstDataType.u64) -> vm_log_off:
         return super().build(id, InstDebugType.REG, reg, 0, width)
 

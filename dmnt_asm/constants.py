@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 #-*- coding:utf-8 -*-
 
-from enum import IntEnum, IntFlag
+from enum import IntEnum, StrEnum, IntFlag
 import string
 from .utils import is_imm, get_reg_num
 
@@ -47,35 +47,60 @@ class InstRegister(InstEnum):
     r15 = 15
 
 
-class InstWidth(InstEnum):
-    B = 1
-    H = 2
-    W = 4
-    X = 8
-
-    def __str__(self):
-        if self == InstWidth.B:
-            return 'u8'
-        elif self == InstWidth.H:
-            return 'u16'
-        elif self == InstWidth.W:
-            return 'u32'
-        elif self == InstWidth.X:
-            return 'u64'
-        else:
-            raise ValueError('Invalid width')
+class InstDataType(StrEnum):
+    u8 = 'u8'
+    u16 = 'u16'
+    u32 = 'u32'
+    u64 = 'u64'
+    i8 = 'i8'
+    i16 = 'i16'
+    i32 = 'i32'
+    i64 = 'i64'
+    float = 'float'
+    double = 'double'
 
     @classmethod
     def _missing_(cls, value):
+        def width_to_datatype(width: int):
+            if width == 1:
+                return cls.u8
+            elif width == 2:
+                return cls.u16
+            elif width == 4:
+                return cls.u32
+            elif width == 8:
+                return cls.u64
+            else:
+                return None
         if isinstance(value, str):
             dtype = value.lower()
             if dtype == 'ptr' or '*' in dtype:
-                return cls.X
+                return cls.u64
+            if dtype == 'float':
+                return cls.float
+            if dtype == 'double':
+                return cls.double
             if len(dtype) in [2,3] and dtype[0] in ['i', 'u'] and dtype[1:].isnumeric():
                 bitwidth = int(dtype[1:])
                 if bitwidth % 8 == 0 and bitwidth // 8 in [1,2,4,8]:
-                    return cls(bitwidth // 8)
+                    return width_to_datatype(bitwidth // 8)
+        if isinstance(value, int):
+            return width_to_datatype(value)
         return None
+
+def InstDataType_to_int(width: InstDataType) -> int:
+    if width in [InstDataType.u8, InstDataType.i8]:
+        return 1
+    elif width in [InstDataType.u16, InstDataType.i16]:
+        return 2
+    elif width in [InstDataType.u32, InstDataType.i32]:
+        return 4
+    elif width in [InstDataType.u64, InstDataType.i64]:
+        return 8
+    elif width == InstDataType.float:
+        return 4
+    elif width == InstDataType.double:
+        return 8
 
 class InstMemBase(InstEnum):
     MAIN = 0
@@ -233,10 +258,10 @@ class InstSaveRestoreRegOp(InstEnum):
     CLEAR = 2
     REG_ZERO = 2
 
-def dtype_to_width(dtype: str) -> InstWidth:
+def dtype_to_width(dtype: str) -> InstDataType:
     dtype = dtype.strip()
     assert dtype[0] in ('i', 'u')
     bit_width = int(dtype[1:])
     assert bit_width in (8, 16, 32, 64)
     width = int(bit_width / 8)
-    return InstWidth(width)
+    return InstDataType(width)

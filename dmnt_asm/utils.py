@@ -2,7 +2,6 @@
 #-*- coding:utf-8 -*-
 
 from __future__ import annotations
-import string
 import re
 
 def int_to_dtype_hexstr(num: int, dtype: str, short_hex: bool = False, truncate: bool = False) -> str:
@@ -50,31 +49,24 @@ def hexstr_to_dtype_int(hexstr: str, dtype: str) -> int:
             comp_num -= (1 << bit_width)
     return comp_num
 
+
 def is_imm(s: str) -> bool:
     """
-    return True if s is safe for int(s, 0)
+    return True if s is safe for int(s, 0) or float(x)
     """
     if not s:
         return False
-    if s[0] == '-':
-        s = s[1:]
-    if not s:
-        return False
-    if s[0] == '0' and len(s) > 1:
-        if s[1] in ('x', 'X'):
-            s = s[2:]
-            if not s:
-                return False
-            return set(s).issubset(string.hexdigits)
-        elif s[1] in ('b', 'B'):
-            s = s[2:]
-            if not s:
-                return False
-            return set(s).issubset('01')
-        else:
-            return False
-    else:
-        return s.isdigit()
+    try:
+        int(s, 0)
+        return True
+    except ValueError:
+        pass
+    try:
+        float(s)
+        return True
+    except ValueError:
+        pass
+    return False
 
 def get_reg_num(s: str) -> int:
     if not s:
@@ -98,14 +90,14 @@ def extract_dtype(s: str) -> tuple[str, str]:
     # find dtype.
     dtype = ''
     # regex find iXX/uXXX or ptr without digit
-    m = re.findall(r'\b([ui]\d+|ptr)\b', s)
+    m = re.findall(r'\b([ui]\d+|ptr|float|double)\b', s)
     if not m:
         return (dtype, s)
     if len(m) > 1:
         raise SyntaxError(f'illegal multiple dtypes in {s}')
     dtype = m[0]
-    if dtype[1:] not in ['8', '16', '32', '64']:
+    if dtype[0] in ['i', 'u'] and dtype[1:] not in ['8', '16', '32', '64']:
         raise SyntaxError(f'illegal dtype {dtype} in {s}')
-    asm = re.sub(r'\b' + dtype + r'\b', '', s).strip()
-    asm = re.sub('\s+', ' ', asm)
+    asm = re.sub(r'\b' + dtype + r'\b', '', s)
+    asm = re.sub('\s+', ' ', asm).strip()
     return (dtype, asm)

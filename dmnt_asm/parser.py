@@ -2,7 +2,6 @@
 #-*- coding:utf-8 -*-
 from __future__ import annotations
 from .instructions import vm_inst_dism, vm_inst_asm, vm_inst
-import logging
 
 class CheatParser:
     def __init__(self, err_handler = None) -> None:

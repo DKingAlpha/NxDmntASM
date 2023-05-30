@@ -27,11 +27,11 @@ function setupNxDmntAsm()
             root: [
                 [/^\{.*\}$/, "master-entry"],
                 [/^\[.*\]$/, "entry"],
-                [/^#.*/, "comment"],
+                [/^\s*#.*$/, "comment"],
                 [/\b(?:if|key|else|endif|loop|to|endloop|save|restore|static|pause|resume|log|nop)\b/i, "keyword"],
                 [/\b[r][\d]{1,2}\b/i, "register"],
                 [/\b[ui][\d]{1,2}\b/i, "datatype"],
-                [/\bptr\b/i, "datatype"],
+                [/\b(ptr|float|double)\b/i, "datatype"],
                 [/\b(?:main|heap|alias|aslr)\b/i, "membase"],
                 [/\b[\da-fA-F]{8}\b/, "vmmc"],
                 [/\b(?:0b[01]+|0x[\dA-Fa-f]+|0o[0-7]+|\d+)\b/, "imm"],
